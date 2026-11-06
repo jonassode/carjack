@@ -37,6 +37,7 @@ window.CJ = window.CJ || {};
 
   function reset() {
     CJ.Bullets.clear();
+    CJ.Blood.clear();
     particles.length = 0;
     graceCar = null;
     exitGrace = 0;
@@ -53,6 +54,7 @@ window.CJ = window.CJ || {};
 
     player = new CJ.Player(world.playerSpawn.x, world.playerSpawn.y);
     player.collide(world);
+    CJ.Peds.reset();
     cam.setTarget(player, true);
     CJ.Input.clearAll();
   }
@@ -62,6 +64,7 @@ window.CJ = window.CJ || {};
     ctx = canvas.getContext('2d', { alpha: false });
 
     world.init(CJ.MAP_CITY);
+    CJ.Peds.init(world, CJ.MAP_CITY);
     CJ.Input.init(canvas);
     CJ.HUD.init();
     resize();
@@ -261,6 +264,22 @@ window.CJ = window.CJ || {};
     cam.shake(1.8);
   }
 
+  function onHitPed(ped, x, y) {
+    if (!ped.kill(Math.cos(player.aim), Math.sin(player.aim))) return;
+    spawnBurst(x, y, 6, ['#8b1a1a', '#6b1414', '#a02020']);
+    cam.shake(1.2);
+  }
+
+  // Every car flattens the people it drives into.
+  function runOverPeds() {
+    for (var i = 0; i < cars.length; i++) {
+      var flattened = CJ.Peds.hitByCar(cars[i]);
+      if (!flattened) continue;
+      spawnBurst(cars[i].x, cars[i].y, 5, ['#8b1a1a', '#6b1414']);
+      cam.shake(Math.min(10, 3 + flattened * 2));
+    }
+  }
+
   // ------------------------------------------------------------------ step
   function step(dt) {
     var I = CJ.Input;
@@ -318,8 +337,10 @@ window.CJ = window.CJ || {};
 
     collideCars();
     collidePlayerCars();
+    runOverPeds();
 
-    CJ.Bullets.update(dt, world, cars, onHitCar);
+    CJ.Peds.update(dt, world, cars);
+    CJ.Bullets.update(dt, world, cars, onHitCar, CJ.Peds.targets(), onHitPed);
     updateParticles(dt);
     cam.update(dt, world);
     I.endStep();
@@ -378,6 +399,10 @@ window.CJ = window.CJ || {};
 
     world.drawGround(ctx, cam, view);
     world.drawBuildings(ctx, cam, view);
+
+    // Blood sits on the ground; people and cars are drawn over it.
+    CJ.Blood.draw(ctx);
+    CJ.Peds.draw(ctx);
 
     for (var i = 0; i < cars.length; i++) cars[i].render(ctx);
     if (!player.driving) player.draw(ctx);
@@ -443,7 +468,11 @@ window.CJ = window.CJ || {};
         paused: paused,
         debug: debug,
         particles: particles,
-        bulletsLive: CJ.Bullets.liveCount
+        bulletsLive: CJ.Bullets.liveCount,
+        peds: CJ.Peds.list,
+        pedsAlive: CJ.Peds.aliveCount,
+        kills: CJ.Peds.kills,
+        splats: CJ.Blood.count
       };
     }
   };

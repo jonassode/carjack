@@ -40,6 +40,20 @@ CJ.CFG = {
   B_RADIUS: 2.5,
   B_DAMAGE: 34,
 
+  // --- pedestrians --------------------------------------------------------
+  PED_COUNT: 64,          // how many people wander the city
+  PED_RADIUS: 6,
+  PED_SPEED: 44,          // base walking speed px/s
+  PED_PANIC_MULT: 2.1,    // speed multiplier while fleeing a fast car
+  PED_FLEE_RADIUS: 120,   // a car closer than this and faster than PED_SCARE_SPEED scares them
+  PED_SCARE_SPEED: 130,
+  PED_DOOR_CHANCE: 0.3,   // chance of stepping into a house when passing a door
+  PED_FADE_TIME: 0.35,    // seconds to fade in/out at a door
+  PED_INSIDE_MIN: 1.5,    // seconds spent inside a house (min / max)
+  PED_INSIDE_MAX: 5.0,
+  KILL_SPEED: 55,         // car speed needed to flatten someone instead of nudging them
+  SPLAT_MAX: 220,         // blood decals kept before the oldest are dropped
+
   // --- camera -------------------------------------------------------------
   CAM_LERP: 6,         // follow smoothing rate
   CAM_LEAD: 0.25,      // how far ahead of velocity the camera looks
@@ -59,6 +73,9 @@ CJ.CFG = {
     buildingSide:'#222932',
     outline:    'rgba(8,10,14,0.55)',
     shadow:     'rgba(0,0,0,0.34)',
+    blood:      '#8c1a1a',
+    bloodDark:  '#5c0f0f',
+    bloodPool:  'rgba(112,18,18,0.62)',
     player:     '#eef2f7',
     playerArm:  '#9aa3ae',
     skin:       '#f0c090',
@@ -66,5 +83,8 @@ CJ.CFG = {
     hudText:    '#e6e9ee'
   },
 
-  CAR_COLORS: ['#b8402f', '#2f6fb8', '#c9a227', '#2f9e6b', '#8d4fc9', '#c96a2f']
+  CAR_COLORS: ['#b8402f', '#2f6fb8', '#c9a227', '#2f9e6b', '#8d4fc9', '#c96a2f'],
+
+  // Pedestrians are plain circles; these are their shirt colours.
+  PED_COLORS: ['#c8cfd8', '#e0d7b8', '#9fb8d8', '#d8a8a8', '#a8d8b8', '#c0b0d8', '#d8c8a0']
 };

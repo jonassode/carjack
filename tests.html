@@ -30,6 +30,8 @@
 <script src="map/city.js"></script>
 <script src="src/world.js"></script>
 <script src="src/camera.js"></script>
+<script src="src/blood.js"></script>
+<script src="src/peds.js"></script>
 <script src="src/bullet.js"></script>
 <script src="src/car.js"></script>
 <script src="src/player.js"></script>
@@ -242,6 +244,143 @@
   }
   assert('bullets: never hit their owner', selfHit === 0);
   CJ.Bullets.clear();
+
+  // ---------------------------------------------------------------- blood
+  CJ.Blood.clear();
+  assert('blood: starts empty', CJ.Blood.count === 0);
+
+  CJ.Blood.add(500, 500, 1, 0);
+  assert('blood: a splat is recorded', CJ.Blood.count === 1);
+  assert('blood: splat has blobs', CJ.Blood.splats[0].blobs.length >= 8,
+    CJ.Blood.splats[0].blobs.length + ' blobs');
+  assert('blood: splat is anchored where it was added',
+    CJ.Blood.splats[0].x === 500 && CJ.Blood.splats[0].y === 500);
+
+  for (i = 0; i < CJ.CFG.SPLAT_MAX + 40; i++) CJ.Blood.add(600 + i, 500, 0, 1);
+  assert('blood: decal count is capped', CJ.Blood.count === CJ.CFG.SPLAT_MAX,
+    CJ.Blood.count + ' splats');
+
+  // Blobs must smear in the impact direction.
+  CJ.Blood.clear();
+  CJ.Blood.add(1000, 1000, 1, 0);
+  var smearSum = 0;
+  var blobs0 = CJ.Blood.splats[0].blobs;
+  for (i = 0; i < blobs0.length; i++) smearSum += blobs0[i].x;
+  assert('blood: spray smears along the impact direction', smearSum > 0,
+    'sum dx=' + smearSum.toFixed(1));
+  CJ.Blood.clear();
+
+  // ---------------------------------------------------------------- peds
+  CJ.Peds.init(world, CJ.MAP_CITY);
+  assert('peds: sidewalk routes discovered', CJ.Peds.loops.length > 10,
+    CJ.Peds.loops.length + ' loops');
+
+  var routeOk = CJ.Peds.loops.every(function (loop) {
+    return loop.points.length > 7;
+  });
+  assert('peds: every route has a full ring', routeOk);
+
+  CJ.Peds.reset();
+  assert('peds: spawns the configured count',
+    CJ.Peds.list.length === CJ.CFG.PED_COUNT, CJ.Peds.list.length + ' peds');
+  assert('peds: nobody starts dead', CJ.Peds.aliveCount === CJ.CFG.PED_COUNT);
+
+  var pedInWall = 0;
+  var pedOutOfBounds = 0;
+  for (i = 0; i < CJ.Peds.list.length; i++) {
+    var pd = CJ.Peds.list[i];
+    if (world.isSolidAt(pd.x, pd.y, pd.r)) pedInWall++;
+    if (pd.x < 0 || pd.y < 0 || pd.x > world.w || pd.y > world.h) pedOutOfBounds++;
+  }
+  assert('peds: none spawn inside a building', pedInWall === 0, pedInWall + ' stuck');
+  assert('peds: none spawn outside the world', pedOutOfBounds === 0);
+
+  // Peds actually walk, and stay out of walls while doing it.
+  var walker = CJ.Peds.list[0];
+  var wx = walker.x, wy = walker.y;
+  for (i = 0; i < 120; i++) CJ.Peds.update(CJ.CFG.DT, world, []);
+  assert('peds: they move around', CJ.M.dist(wx, wy, walker.x, walker.y) > 5,
+    'moved ' + CJ.M.dist(wx, wy, walker.x, walker.y).toFixed(1) + 'px');
+
+  var strayed = 0;
+  for (i = 0; i < CJ.Peds.list.length; i++) {
+    var q = CJ.Peds.list[i];
+    if (q.state === 'inside') continue;
+    if (world.isSolidAt(q.x, q.y, q.r - 1)) strayed++;
+  }
+  assert('peds: never walk into buildings', strayed === 0, strayed + ' inside walls');
+
+  // The door state machine: force a ped to enter, then make sure it comes back.
+  var doorman = CJ.Peds.list[0];
+  doorman.loop = CJ.Peds.loops.filter(function (l) { return l.doors.length > 0; })[0] || doorman.loop;
+  doorman.state = 'entering';
+  doorman.timer = CJ.CFG.PED_FADE_TIME;
+  doorman.fade = 1;
+  for (i = 0; i < 40; i++) doorman.update(CJ.CFG.DT, world, []);
+  assert('peds: fade into a house', doorman.state === 'inside' && doorman.fade === 0,
+    doorman.state + ' fade=' + doorman.fade);
+
+  // Track the whole cycle rather than the final state: a ped can legitimately
+  // walk to the next door and go back inside again.
+  var cameOut = false;
+  var maxFade = 0;
+  for (i = 0; i < 60 * 12; i++) {
+    doorman.update(CJ.CFG.DT, world, []);
+    if (doorman.state === 'exiting' || doorman.state === 'walk') cameOut = true;
+    if (doorman.fade > maxFade) maxFade = doorman.fade;
+  }
+  assert('peds: come back out of a house', cameOut);
+  assert('peds: reappear fully visible', maxFade > 0.99, 'max fade=' + maxFade.toFixed(2));
+  assert('peds: end up on a walkable tile',
+    doorman.state === 'inside' || !world.isSolidAt(doorman.x, doorman.y, doorman.r - 1),
+    doorman.state + ' @ ' + doorman.x.toFixed(0) + ',' + doorman.y.toFixed(0));
+
+  // Kills leave blood behind.
+  CJ.Blood.clear();
+  var victim = CJ.Peds.list[1];
+  var killed = victim.kill(1, 0);
+  assert('peds: kill() reports the death', killed === true);
+  assert('peds: the dead ped is flagged', victim.dead === true);
+  assert('peds: a kill leaves a splat', CJ.Blood.count === 1);
+  assert('peds: killing twice is a no-op', victim.kill(1, 0) === false);
+  assert('peds: blood count did not double', CJ.Blood.count === 1);
+  assert('peds: alive count drops', CJ.Peds.aliveCount === CJ.CFG.PED_COUNT - 1);
+
+  // A fast car flattens; a slow one just shoves.
+  CJ.Blood.clear();
+  var runner = CJ.Peds.list[2];
+  runner.state = 'walk';
+  runner.x = 900;
+  runner.y = 900;
+  var slowCar = new CJ.Car({ x: 900, y: 900, h: 0 });
+  slowCar.vx = 10;
+  var flatSlow = CJ.Peds.hitByCar(slowCar);
+  assert('peds: a crawling car does not kill', flatSlow === 0 && !runner.dead);
+
+  var fastCar = new CJ.Car({ x: 900, y: 900, h: 0 });
+  fastCar.vx = 400;
+  var flatFast = CJ.Peds.hitByCar(fastCar);
+  assert('peds: a fast car runs them over', flatFast === 1 && runner.dead);
+  assert('peds: running someone over leaves blood', CJ.Blood.count === 1);
+
+  // Bullets can kill peds through the optional ped arguments.
+  CJ.Blood.clear();
+  var shootee = CJ.Peds.list[3];
+  shootee.state = 'walk';
+  shootee.x = 1000;
+  shootee.y = 700;
+  CJ.Bullets.clear();
+  CJ.Bullets.spawn(900, 700, 0, null);
+  var pedHit = 0;
+  for (i = 0; i < 20 && CJ.Bullets.liveCount > 0; i++) {
+    CJ.Bullets.update(CJ.CFG.DT, world, [], null, CJ.Peds.targets(),
+      function (p) { pedHit++; p.kill(1, 0); });
+  }
+  assert('bullets: a bullet can kill a pedestrian', pedHit === 1 && shootee.dead,
+    'hits=' + pedHit);
+  assert('bullets: shooting someone leaves blood', CJ.Blood.count === 1);
+  CJ.Bullets.clear();
+  CJ.Blood.clear();
 
   // ---------------------------------------------------------------- camera
   var cam = CJ.Camera;

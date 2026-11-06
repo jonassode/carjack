@@ -83,6 +83,8 @@ window.CJ = window.CJ || {};
 
   CJ.MAP_CITY = {
     tileSize: 64,
+    blockSize: BLOCK,        // tiles per city block (used to lay out sidewalk routes)
+    roadWidth: ROAD_W,
     legend: { ' ': 'grass', '=': 'road', '.': 'sidewalk', '#': 'building', '|': 'lane', 'o': 'tree' },
     rows: buildRows(),
 

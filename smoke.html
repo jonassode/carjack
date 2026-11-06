@@ -40,6 +40,8 @@
 <script src="src/input.js"></script>
 <script src="src/world.js"></script>
 <script src="src/camera.js"></script>
+<script src="src/blood.js"></script>
+<script src="src/peds.js"></script>
 <script src="src/bullet.js"></script>
 <script src="src/car.js"></script>
 <script src="src/player.js"></script>
@@ -110,6 +112,9 @@ function run() {
     assert('game booted', !!s && !!s.player, 'player at ' +
       (s ? s.player.x.toFixed(0) + ',' + s.player.y.toFixed(0) : 'none'));
     assert('8 cars spawned', s.cars.length === 8, s.cars.length + ' cars');
+    assert('pedestrians spawned', s.pedsAlive === CJ.CFG.PED_COUNT,
+      s.pedsAlive + ' people');
+    assert('no blood on a fresh city', s.splats === 0);
 
     // --- walking ---------------------------------------------------------
     var startY = s.player.y;
@@ -164,6 +169,24 @@ function run() {
     hold('Space', 15);
     assert('cannot shoot while driving', state().bulletsLive === 0);
 
+    // --- running people over ---------------------------------------------
+    s = state();
+    var victim = null;
+    for (var pi = 0; pi < s.peds.length; pi++) {
+      if (!s.peds[pi].dead) { victim = s.peds[pi]; break; }
+    }
+    victim.state = 'walk';                 // make sure it is on the street
+    victim.x = car.x + 40;
+    victim.y = car.y;
+    var bloodBefore = CJ.Blood.count;
+    car.vx = 420; car.vy = 0; car.heading = 0;   // slam into them
+    tick(10);
+    s = state();
+    assert('driving over a pedestrian flattens them', victim.dead === true);
+    assert('running someone over leaves a blood splat',
+      CJ.Blood.count > bloodBefore, CJ.Blood.count + ' splats');
+    assert('the kill is counted', s.kills >= 1, s.kills + ' kills');
+
     // --- exit ------------------------------------------------------------
     tap('KeyE');
     s = state();
@@ -198,6 +221,26 @@ function run() {
       s.player.x === s.world.playerSpawn.x && s.player.y === s.world.playerSpawn.y);
     assert('R restores all cars', s.cars.length === 8, s.cars.length + ' cars');
     assert('R clears bullets', s.bulletsLive === 0);
+    assert('R respawns every pedestrian', s.pedsAlive === CJ.CFG.PED_COUNT,
+      s.pedsAlive + ' people');
+    assert('R clears the blood', s.splats === 0);
+
+    // --- shooting pedestrians --------------------------------------------
+    s = state();
+    var target = null;
+    for (var ti = 0; ti < s.peds.length; ti++) {
+      if (!s.peds[ti].dead) { target = s.peds[ti]; break; }
+    }
+    // Stand them on the clear sidewalk row in front of the player and fire east.
+    target.state = 'walk';
+    target.x = s.player.x + 60;
+    target.y = s.player.y;
+    s.player.aim = 0;
+    hold('Space', 15);
+    s = state();
+    assert('shooting a pedestrian kills them', target.dead === true);
+    assert('shooting someone leaves a blood splat', s.splats > 0, s.splats + ' splats');
+    assert('the on-foot kill is counted', s.kills >= 1, s.kills + ' kills');
 
     // --- rendering must not throw ----------------------------------------
     var rendered = true;

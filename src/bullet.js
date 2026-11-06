@@ -29,11 +29,13 @@ CJ.Bullets = (function () {
     return b;
   }
 
-  // Moves every bullet, resolves wall hits with a segment test and car hits with
-  // a circle test. `onHitCar(car, x, y)` is called for damage bookkeeping.
-  function update(dt, world, cars, onHitCar) {
+  // Moves every bullet, resolves wall hits with a segment test, then hits against
+// cars and pedestrians with circle tests.
+  //   onHitCar(car, x, y) / onHitPed(ped, x, y) are optional damage callbacks.
+  //   `peds` and `onHitPed` are optional so older callers keep working.
+  function update(dt, world, cars, onHitCar, peds, onHitPed) {
     var C = CJ.CFG;
-    var near, j, k, t, best, nx, ny, car, res;
+    var near, j, k, t, best, nx, ny, car, res, hit;
 
     for (i = 0; i < MAX; i++) {
       var b = pool[i];
@@ -60,6 +62,23 @@ CJ.Bullets = (function () {
         b.active = false;
         continue;
       }
+
+      // --- pedestrians (circle test, checked first: they are smaller) -----
+      hit = false;
+      if (peds && peds.length) {
+        for (k = 0; k < peds.length; k++) {
+          var ped = peds[k];
+          if (!ped || ped.dead) continue;
+          res = M.circleVsCircle(nx, ny, C.B_RADIUS + 1.5, ped.x, ped.y, ped.r || 6);
+          if (res) {
+            b.active = false;
+            hit = true;
+            if (onHitPed) onHitPed(ped, nx, ny);
+            break;
+          }
+        }
+      }
+      if (hit) continue;
 
       // --- cars (circle test at the new position) ------------------------
       for (k = 0; k < cars.length; k++) {

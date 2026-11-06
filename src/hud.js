@@ -108,6 +108,9 @@ CJ.HUD = (function () {
       'pos ' + (s.player.driving ? s.player.driving.x : s.player.x).toFixed(0) + ',' +
                (s.player.driving ? s.player.driving.y : s.player.y).toFixed(0),
       'bullets ' + CJ.Bullets.liveCount,
+      'peds ' + CJ.Peds.aliveCount + '/' + CJ.Peds.list.length + '  kills ' + CJ.Peds.kills,
+      'splats ' + CJ.Blood.count,
+      'loops ' + CJ.Peds.loops.length,
       'solids ' + s.world.solids.length,
       'mode ' + (s.player.driving ? 'car' : 'foot')
     ];
