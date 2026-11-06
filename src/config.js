@@ -34,6 +34,11 @@ CJ.CFG = {
   EXIT_OFFSET: 26,     // how far to step out from car centre
   EXIT_GRACE: 0.4,     // seconds of car<->player collision immunity after exit
 
+  // --- explosions / health ------------------------------------------------
+  EXPLOSION_RADIUS: 190,      // px blast radius around a car that blows up
+  EXPLOSION_DMG_FRAC: 0.30,   // share of max health lost right at the blast centre
+  EXPLOSION_IN_CAR_FRAC: 0.50,// share of max health lost if the car you are in blows
+
   // --- bullets ------------------------------------------------------------
   B_SPEED: 900,
   B_TTL: 1.2,
@@ -76,6 +81,12 @@ CJ.CFG = {
     blood:      '#8c1a1a',
     bloodDark:  '#5c0f0f',
     bloodPool:  'rgba(112,18,18,0.62)',
+    police:     '#2f4f86',
+    policeRoof: '#3f68ab',
+    hospital:   '#b9c4cc',
+    hospitalRoof:'#dde6ec',
+    cross:      '#c23b2b',
+    explosion:  '#ffb347',
     player:     '#eef2f7',
     playerArm:  '#9aa3ae',
     skin:       '#f0c090',

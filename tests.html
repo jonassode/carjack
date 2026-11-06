@@ -382,6 +382,74 @@
   CJ.Bullets.clear();
   CJ.Blood.clear();
 
+  // ---------------------------------------------------------------- blast damage
+  assert('blastDamage: point blank is the full amount',
+    M.blastDamage(0, 200, 30) === 30, String(M.blastDamage(0, 200, 30)));
+  assert('blastDamage: half radius is half damage',
+    near(M.blastDamage(100, 200, 30), 15, 1e-9));
+  assert('blastDamage: at the edge is zero', M.blastDamage(200, 200, 30) === 0);
+  assert('blastDamage: beyond the edge is zero', M.blastDamage(500, 200, 30) === 0);
+  assert('blastDamage: never negative', M.blastDamage(-50, 200, 30) === 30);
+
+  var prev = Infinity;
+  var monotonic = true;
+  for (var bd = 0; bd <= 200; bd += 10) {
+    var cur = M.blastDamage(bd, 200, 30);
+    if (cur > prev) monotonic = false;
+    prev = cur;
+  }
+  assert('blastDamage: falls off monotonically', monotonic);
+
+  // ---------------------------------------------------------------- special buildings
+  assert('specials: world exposes a police station footprint',
+    !!world.policeStation && world.policeStation.w > 0 && world.policeStation.h > 0);
+  assert('specials: world exposes a hospital footprint',
+    !!world.hospital && world.hospital.w > 0 && world.hospital.h > 0);
+  assert('specials: they are different buildings',
+    world.policeStation.x !== world.hospital.x || world.policeStation.y !== world.hospital.y);
+  assert('specials: police and hospital do not overlap',
+    world.policeStation.x + world.policeStation.w <= world.hospital.x ||
+    world.hospital.x + world.hospital.w <= world.policeStation.x ||
+    world.policeStation.y + world.policeStation.h <= world.hospital.y ||
+    world.hospital.y + world.hospital.h <= world.policeStation.y);
+
+  var policeTiles = 0, hospitalTiles = 0;
+  for (var sty = 0; sty < world.rows; sty++) {
+    for (var stx = 0; stx < world.cols; stx++) {
+      var sc2 = world.tileChar(stx, sty);
+      if (sc2 === 'P') policeTiles++;
+      if (sc2 === 'H') hospitalTiles++;
+    }
+  }
+  assert('specials: exactly one police station', policeTiles === 16, policeTiles + ' tiles');
+  assert('specials: exactly one hospital', hospitalTiles === 16, hospitalTiles + ' tiles');
+
+  var policeBoxes = 0, hospitalBoxes = 0;
+  for (var si2 = 0; si2 < world.solids.length; si2++) {
+    if (world.solids[si2].kind === 'police') policeBoxes++;
+    if (world.solids[si2].kind === 'hospital') hospitalBoxes++;
+  }
+  assert('specials: one collision box each', policeBoxes === 1 && hospitalBoxes === 1,
+    policeBoxes + '/' + hospitalBoxes);
+
+  assert('specials: both are solid',
+    world.isSolidAt(world.policeStation.x + world.policeStation.w / 2,
+                    world.policeStation.y + world.policeStation.h / 2, 2) &&
+    world.isSolidAt(world.hospital.x + world.hospital.w / 2,
+                    world.hospital.y + world.hospital.h / 2, 2));
+
+  // The hospital respawn point must be outside the hospital and walkable.
+  var hs = world.hospitalSpawn;
+  var insideHospital =
+    hs.x > world.hospital.x && hs.x < world.hospital.x + world.hospital.w &&
+    hs.y > world.hospital.y && hs.y < world.hospital.y + world.hospital.h;
+  assert('specials: hospital spawn is outside the building', !insideHospital,
+    hs.x.toFixed(0) + ',' + hs.y.toFixed(0));
+  assert('specials: hospital spawn is walkable',
+    !world.isSolidAt(hs.x, hs.y, CJ.CFG.P_RADIUS), hs.x.toFixed(0) + ',' + hs.y.toFixed(0));
+  assert('specials: hospital spawn is inside the world',
+    hs.x > 0 && hs.y > 0 && hs.x < world.w && hs.y < world.h);
+
   // ---------------------------------------------------------------- camera
   var cam = CJ.Camera;
   cam.setViewport(800, 600);

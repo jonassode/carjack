@@ -30,6 +30,15 @@ CJ.M = (function () {
     return current + (target - current) * (1 - Math.exp(-rate * dt));
   }
 
+  // Damage from an explosion: full `maxAmount` at the centre, falling off
+  // linearly to zero at `radius`. Negative or NaN distances clamp safely.
+  function blastDamage(dist, radius, maxAmount) {
+    if (!(radius > 0) || !isFinite(dist)) return 0;
+    if (dist <= 0) return maxAmount;
+    if (dist >= radius) return 0;
+    return maxAmount * (1 - dist / radius);
+  }
+
   // Deterministic 0..1 hash for stable per-tile colour variation.
   function hash2(x, y) {
     var h = x * 374761393 + y * 668265263;
@@ -148,6 +157,7 @@ CJ.M = (function () {
     norm: norm,
     rot: rot,
     smooth: smooth,
+    blastDamage: blastDamage,
     hash2: hash2,
     circleVsAABB: circleVsAABB,
     segVsAABB: segVsAABB,

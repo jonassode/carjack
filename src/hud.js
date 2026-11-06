@@ -15,6 +15,7 @@ CJ.HUD = (function () {
     els.speed = document.getElementById('hud-speed');
     els.speedUnit = document.getElementById('hud-speed-unit');
     els.healthFill = document.getElementById('hud-health-fill');
+    els.healthText = document.getElementById('hud-health-text');
     els.carHealth = document.getElementById('hud-car-health');
     els.carHealthFill = document.getElementById('hud-car-health-fill');
     els.hint = document.getElementById('hud-hint');
@@ -31,7 +32,15 @@ CJ.HUD = (function () {
     if (els.speedUnit) els.speedUnit.style.opacity = driving ? '1' : '0.25';
 
     var hp = Math.max(0, s.player.hp) / CJ.CFG.P_HP;
-    if (els.healthFill) els.healthFill.style.width = (hp * 100).toFixed(0) + '%';
+    if (els.healthFill) {
+      els.healthFill.style.width = (hp * 100).toFixed(0) + '%';
+      els.healthFill.style.background = hp > 0.5
+        ? 'linear-gradient(90deg, #48d17a, #8ff0a4)'
+        : (hp > 0.25
+            ? 'linear-gradient(90deg, #d1a248, #ffd15c)'
+            : 'linear-gradient(90deg, #c0392b, #ff6b5a)');
+    }
+    if (els.healthText) setText(els.healthText, String(Math.ceil(Math.max(0, s.player.hp))));
 
     if (els.carHealth) els.carHealth.style.display = driving ? 'block' : 'none';
     if (driving && els.carHealthFill) {
@@ -96,6 +105,25 @@ CJ.HUD = (function () {
       ctx.arc(ox + s.player.x * sx, oy + s.player.y * sy, 3, 0, Math.PI * 2);
       ctx.fill();
     }
+
+    // Special buildings: blue ring for the police station, red cross for the
+    // hospital. Drawn on top so they are findable at a glance.
+    var specials = [
+      { rect: world.policeStation, color: '#5b9bff' },
+      { rect: world.hospital, color: '#ff5a4a' }
+    ];
+    for (var k = 0; k < specials.length; k++) {
+      var rect = specials[k].rect;
+      if (!rect) continue;
+      ctx.strokeStyle = specials[k].color;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(
+        ox + rect.x * sx + 0.5,
+        oy + rect.y * sy + 0.5,
+        Math.max(3, rect.w * sx),
+        Math.max(3, rect.h * sy)
+      );
+    }
     ctx.restore();
 
     if (s.debug) drawDebug(ctx, s);
@@ -108,6 +136,8 @@ CJ.HUD = (function () {
       'pos ' + (s.player.driving ? s.player.driving.x : s.player.x).toFixed(0) + ',' +
                (s.player.driving ? s.player.driving.y : s.player.y).toFixed(0),
       'bullets ' + CJ.Bullets.liveCount,
+      'hp ' + Math.ceil(s.player.hp) + '/' + CJ.CFG.P_HP +
+        (s.player.driving ? '  car ' + Math.max(0, Math.ceil(s.player.driving.hp)) : ''),
       'peds ' + CJ.Peds.aliveCount + '/' + CJ.Peds.list.length + '  kills ' + CJ.Peds.kills,
       'splats ' + CJ.Blood.count,
       'loops ' + CJ.Peds.loops.length,

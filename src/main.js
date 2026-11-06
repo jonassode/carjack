@@ -14,6 +14,8 @@ window.CJ = window.CJ || {};
   var player = null;
   var cars = [];
   var particles = [];
+  var explosions = [];
+  var flash = 0;            // 0..1 red damage vignette
   var graceCar = null;
   var exitGrace = 0;
 
@@ -39,6 +41,8 @@ window.CJ = window.CJ || {};
     CJ.Bullets.clear();
     CJ.Blood.clear();
     particles.length = 0;
+    explosions.length = 0;
+    flash = 0;
     graceCar = null;
     exitGrace = 0;
     paused = false;
@@ -133,26 +137,79 @@ window.CJ = window.CJ || {};
     cam.setTarget(player);
   }
 
-  function destroyCar(car) {
+  // A car whose chassis is gone explodes: it takes the player with it (half their
+  // health if they were inside) and hurts anyone nearby through the blast.
+  function explodeCar(car) {
     var idx = cars.indexOf(car);
     if (idx === -1) return;
-    if (player.driving === car) {
+
+    var cx = car.x;
+    var cy = car.y;
+    var wasInside = player.driving === car;
+
+    if (wasInside) {
+      // Kick the player out at the car's position before the blast is resolved.
       player.driving = null;
       car.driver = null;
-      player.x = car.x;
-      player.y = car.y;
+      player.x = cx;
+      player.y = cy;
+      player.vx = 0;
+      player.vy = 0;
       player.collide(world);
       cam.setTarget(player);
     }
+
     cars.splice(idx, 1);
-    spawnBurst(car.x, car.y, 26, ['#ffd25c', '#ff8a3d', '#ff4a2f', '#6b6f75']);
-    cam.shake(12);
+    if (graceCar === car) { graceCar = null; exitGrace = 0; }
+
+    explosions.push({ x: cx, y: cy, r: 14, max: C.EXPLOSION_RADIUS, life: 0.5, maxLife: 0.5 });
+    spawnBurst(cx, cy, 34, ['#fff3c4', '#ffd25c', '#ff8a3d', '#ff4a2f', '#8a3b1e', '#4a4f57']);
+    cam.shake(18);
+
+    if (wasInside) {
+      damagePlayer(C.P_HP * C.EXPLOSION_IN_CAR_FRAC);
+    } else {
+      var d = M.dist(player.x, player.y, cx, cy);
+      var dmg = M.blastDamage(d, C.EXPLOSION_RADIUS, C.P_HP * C.EXPLOSION_DMG_FRAC);
+      if (dmg > 0.5) damagePlayer(dmg);
+    }
   }
 
   function onHitCar(car, x, y) {
     car.hp -= C.B_DAMAGE;
     spawnSparks(x, y, 4);
-    if (car.hp <= 0) destroyCar(car);
+  }
+
+  // ---------------------------------------------------------------- health
+  function damagePlayer(amount) {
+    if (!(amount > 0) || player.hp <= 0) return 0;
+    var before = player.hp;
+    player.hp = Math.max(0, player.hp - amount);
+    flash = Math.min(1, flash + 0.3 + amount / (C.P_HP * 2));
+    cam.shake(Math.min(10, 2 + amount * 0.25));
+    if (player.hp <= 0) respawnPlayer();
+    return before - player.hp;
+  }
+
+  // Out of health: you wake up on the pavement outside the hospital, patched up.
+  function respawnPlayer() {
+    var spot = world.hospitalSpawn;
+
+    if (player.driving) {
+      player.driving.driver = null;
+      player.driving = null;
+    }
+
+    player.x = spot.x;
+    player.y = spot.y;
+    player.vx = 0;
+    player.vy = 0;
+    player.hp = C.P_HP;
+    player.collide(world);
+
+    flash = 1;
+    cam.setTarget(player, true);
+    cam.shake(6);
   }
 
   // ------------------------------------------------------------------ particles
@@ -176,6 +233,58 @@ window.CJ = window.CJ || {};
       var s = 30 + Math.random() * 220;
       spawnParticle(x, y, Math.cos(a) * s, Math.sin(a) * s,
         0.35 + Math.random() * 0.55, colors[i % colors.length], 2 + Math.random() * 3);
+    }
+  }
+
+  // Any car that has run out of chassis health explodes. Collected first so the
+  // array is not mutated while iterating it.
+  function explodeDeadCars() {
+    var doomed = null;
+    for (var i = 0; i < cars.length; i++) {
+      if (cars[i].hp <= 0) {
+        if (!doomed) doomed = [];
+        doomed.push(cars[i]);
+      }
+    }
+    if (!doomed) return;
+    for (var k = 0; k < doomed.length; k++) explodeCar(doomed[k]);
+  }
+
+  function updateExplosions(dt) {
+    for (var i = explosions.length - 1; i >= 0; i--) {
+      var e = explosions[i];
+      e.life -= dt;
+      if (e.life <= 0) { explosions.splice(i, 1); continue; }
+      var t = 1 - e.life / e.maxLife;
+      e.r = 14 + t * e.max * 0.62;
+    }
+  }
+
+  function drawExplosions(c) {
+    for (var i = 0; i < explosions.length; i++) {
+      var e = explosions[i];
+      var t = e.life / e.maxLife;
+
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+
+      var g = c.createRadialGradient(e.x, e.y, 0, e.x, e.y, Math.max(1, e.r));
+      g.addColorStop(0, 'rgba(255,246,214,' + (0.85 * t).toFixed(3) + ')');
+      g.addColorStop(0.45, 'rgba(255,163,71,' + (0.55 * t).toFixed(3) + ')');
+      g.addColorStop(1, 'rgba(255,74,47,0)');
+      c.fillStyle = g;
+      c.beginPath();
+      c.arc(e.x, e.y, Math.max(1, e.r), 0, Math.PI * 2);
+      c.fill();
+
+      // Shock ring.
+      c.strokeStyle = 'rgba(255,236,190,' + (0.5 * t).toFixed(3) + ')';
+      c.lineWidth = 2.5 * t + 0.5;
+      c.beginPath();
+      c.arc(e.x, e.y, Math.max(1, e.r * 0.92), 0, Math.PI * 2);
+      c.stroke();
+
+      c.restore();
     }
   }
 
@@ -292,6 +401,10 @@ window.CJ = window.CJ || {};
     if (paused) { I.endStep(); return; }
     if (exitGrace > 0) exitGrace -= dt;
 
+    // Cars that lost their chassis blow up at the spot where they died. Done
+    // before any movement so the blast is measured from the death position.
+    explodeDeadCars();
+
     // Enter / leave the nearest car.
     if (I.pressed('KeyE')) {
       if (player.driving) exitCar();
@@ -342,6 +455,8 @@ window.CJ = window.CJ || {};
     CJ.Peds.update(dt, world, cars);
     CJ.Bullets.update(dt, world, cars, onHitCar, CJ.Peds.targets(), onHitPed);
     updateParticles(dt);
+    updateExplosions(dt);
+    if (flash > 0) flash = Math.max(0, flash - dt * 1.4);
     cam.update(dt, world);
     I.endStep();
   }
@@ -407,11 +522,24 @@ window.CJ = window.CJ || {};
     for (var i = 0; i < cars.length; i++) cars[i].render(ctx);
     if (!player.driving) player.draw(ctx);
     CJ.Bullets.draw(ctx);
+    drawExplosions(ctx);
     drawParticles(ctx);
     drawReticle(ctx);
     if (debug) drawHitboxes(ctx);
 
     cam.restore(ctx);
+
+    // Damage vignette, drawn in screen space over everything.
+    if (flash > 0.01) {
+      var g = ctx.createRadialGradient(
+        view.w / 2, view.h / 2, Math.min(view.w, view.h) * 0.22,
+        view.w / 2, view.h / 2, Math.max(view.w, view.h) * 0.72
+      );
+      g.addColorStop(0, 'rgba(190,30,30,0)');
+      g.addColorStop(1, 'rgba(190,30,30,' + (0.55 * flash).toFixed(3) + ')');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, view.w, view.h);
+    }
 
     CJ.HUD.update({ player: player, paused: paused });
     CJ.HUD.draw(ctx, {
@@ -468,6 +596,7 @@ window.CJ = window.CJ || {};
         paused: paused,
         debug: debug,
         particles: particles,
+        explosions: explosions,
         bulletsLive: CJ.Bullets.liveCount,
         peds: CJ.Peds.list,
         pedsAlive: CJ.Peds.aliveCount,

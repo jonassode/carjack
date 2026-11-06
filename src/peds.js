@@ -64,7 +64,7 @@ CJ.Peds = (function () {
           var point = {
             x: px,
             y: py,
-            door: w.tileChar(t[2], t[3]) === '#'
+            door: (function (c) { return c === '#' || c === 'P' || c === 'H'; })(w.tileChar(t[2], t[3]))
           };
           points.push(point);
           if (point.door) {

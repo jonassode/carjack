@@ -25,6 +25,7 @@
   <span id="hud-mode"></span>
   <span id="hud-speed"></span>
   <span id="hud-speed-unit"></span>
+  <span id="hud-health-text"></span>
   <div id="hud-health-fill"></div>
   <div id="hud-car-health"><div id="hud-car-health-fill"></div></div>
   <div id="hud-hint"></div>
@@ -276,6 +277,95 @@ function run() {
     assert('shooting a pedestrian kills them', target.dead === true);
     assert('shooting someone leaves a blood splat', s.splats > 0, s.splats + ' splats');
     assert('the on-foot kill is counted', s.kills >= 1, s.kills + ' kills');
+
+    // --- player health ---------------------------------------------------
+    assert('health starts full', s.player.hp === CJ.CFG.P_HP, s.player.hp + ' hp');
+
+    // --- car explosion: blast damage falls off with distance ---------------
+    s = state();
+    var bomb = s.cars[0];
+    var px0 = s.player.x, py0 = s.player.y;
+
+    // Far from the player: the blast must not reach.
+    bomb.x = px0 + CJ.CFG.EXPLOSION_RADIUS + 400;
+    bomb.y = py0;
+    bomb.hp = 0;
+    tick(1);
+    s = state();
+    assert('a wrecked car is removed from the world',
+      s.cars.indexOf(bomb) === -1, s.cars.length + ' cars left');
+    assert('an explosion is spawned', s.explosions.length > 0,
+      s.explosions.length + ' explosions');
+    assert('a distant explosion does not hurt the player',
+      s.player.hp === CJ.CFG.P_HP, s.player.hp + ' hp');
+
+    // Right on top of the blast: the full 30%.
+    s = state();
+    var bomb2 = s.cars[0];
+    bomb2.x = s.player.x;
+    bomb2.y = s.player.y;
+    bomb2.hp = 0;
+    tick(1);
+    s = state();
+    var nearLoss = CJ.CFG.P_HP - s.player.hp;
+    assert('a point-blank explosion takes the full 30%',
+      Math.abs(nearLoss - CJ.CFG.P_HP * 0.30) < 0.01,
+      'lost ' + nearLoss.toFixed(1) + ' hp');
+
+    // Halfway out: about half of the maximum.
+    tap('KeyR');
+    s = state();
+    var bomb3 = s.cars[0];
+    bomb3.x = s.player.x + CJ.CFG.EXPLOSION_RADIUS / 2;
+    bomb3.y = s.player.y;
+    bomb3.hp = 0;
+    tick(1);
+    s = state();
+    var midLoss = CJ.CFG.P_HP - s.player.hp;
+    assert('a mid-range explosion takes about half of that',
+      Math.abs(midLoss - CJ.CFG.P_HP * 0.15) < 1.5,
+      'lost ' + midLoss.toFixed(1) + ' hp');
+
+    // --- blowing up the car you are sitting in ----------------------------
+    tap('KeyR');
+    tick(2);
+    s = state();
+    // Walk to the car below the spawn and get in.
+    hold('ArrowDown', 54);
+    tap('KeyE');
+    s = state();
+    assert('player is driving before the explosion', !!s.player.driving);
+    var drivenCar = s.player.driving;
+    drivenCar.hp = 0;
+    tick(1);
+    s = state();
+    assert('the player is thrown out of the exploding car', !s.player.driving);
+    assert('being in the exploding car costs half your health',
+      Math.abs(s.player.hp - CJ.CFG.P_HP * 0.5) < 0.01,
+      s.player.hp.toFixed(1) + ' hp left');
+    assert('the exploded car is gone', s.cars.indexOf(drivenCar) === -1);
+
+    // --- dying respawns you outside the hospital --------------------------
+    tap('KeyR');
+    tick(2);
+    s = state();
+    var respawn = s.world.hospitalSpawn;
+    var bomb4 = s.cars[0];
+    bomb4.x = s.player.x;
+    bomb4.y = s.player.y;
+    bomb4.hp = 0;
+    s.player.hp = 1;                       // one point left: the blast finishes it
+    tick(1);
+    s = state();
+    assert('running out of health respawns the player',
+      Math.abs(s.player.x - respawn.x) < 1 && Math.abs(s.player.y - respawn.y) < 1,
+      'at ' + s.player.x.toFixed(0) + ',' + s.player.y.toFixed(0) +
+      ' vs hospital ' + respawn.x.toFixed(0) + ',' + respawn.y.toFixed(0));
+    assert('the respawned player has full health',
+      s.player.hp === CJ.CFG.P_HP, s.player.hp + ' hp');
+    assert('the respawn point is walkable',
+      !s.world.isSolidAt(s.player.x, s.player.y, CJ.CFG.P_RADIUS - 1),
+      s.player.x.toFixed(0) + ',' + s.player.y.toFixed(0));
 
     // --- rendering must not throw ----------------------------------------
     var rendered = true;

@@ -9,6 +9,8 @@
 //   '='  road
 //   '.'  sidewalk
 //   '#'  building (solid)
+//   'P'  police station (solid, exactly one on the map)
+//   'H'  hospital (solid, exactly one on the map)
 //   '|'  road centre line marker (non-solid)
 //   'o'  tree (solid, small)
 //
@@ -20,6 +22,19 @@ window.CJ = window.CJ || {};
   var N = 64;          // grid is N x N tiles
   var BLOCK = 8;       // one block (road pair + block + sidewalk) every 8 tiles
   var ROAD_W = 2;      // road lanes per street
+
+  // Exactly one of each. Blocks are in block coordinates; the parks live at
+  // (4,4), (1,6) and (6,2), so these two are chosen to not collide with them.
+  var SPECIAL = {
+    police: { bx: 2, by: 2, ch: 'P' },
+    hospital: { bx: 5, by: 5, ch: 'H' }
+  };
+
+  function specialAt(blockX, blockY) {
+    if (blockX === SPECIAL.police.bx && blockY === SPECIAL.police.by) return 'P';
+    if (blockX === SPECIAL.hospital.bx && blockY === SPECIAL.hospital.by) return 'H';
+    return null;
+  }
 
   function isRoadLine(c) {
     var m = ((c % BLOCK) + BLOCK) % BLOCK;
@@ -45,9 +60,14 @@ window.CJ = window.CJ || {};
                    (by === 0) || (by === BLOCK - ROAD_W - 1);
         if (edge) { row.push('.'); continue; }
 
-        // Whole-block parks.
         var blockX = Math.floor(x / BLOCK);
         var blockY = Math.floor(y / BLOCK);
+
+        // The police station and the hospital each own a whole block interior.
+        var special = specialAt(blockX, blockY);
+        if (special) { row.push(special); continue; }
+
+        // Whole-block parks.
         var isPark = (blockX === 4 && blockY === 4) ||
                      (blockX === 1 && blockY === 6) ||
                      (blockX === 6 && blockY === 2);
@@ -85,8 +105,12 @@ window.CJ = window.CJ || {};
     tileSize: 64,
     blockSize: BLOCK,        // tiles per city block (used to lay out sidewalk routes)
     roadWidth: ROAD_W,
-    legend: { ' ': 'grass', '=': 'road', '.': 'sidewalk', '#': 'building', '|': 'lane', 'o': 'tree' },
+    legend: { ' ': 'grass', '=': 'road', '.': 'sidewalk', '#': 'building',
+             'P': 'police', 'H': 'hospital', '|': 'lane', 'o': 'tree' },
     rows: buildRows(),
+
+    // Where the two special buildings live, in block coordinates.
+    special: SPECIAL,
 
     // Player spawn (tile units, centre of tile). Sidewalk at a street corner,
     // with a car parked on the road straight below it.

@@ -8,6 +8,10 @@ flat geometric shapes — no sprites, no images, no assets at all.
 - On foot, aim with the mouse and shoot by **clicking** (or holding the button)
 - Pedestrians wander the sidewalks, duck in and out of houses, scatter from
   speeding cars — and turn into a blood splat if you run them over or shoot them
+- One police station and one hospital, both marked on the minimap
+- Cars explode when their chassis is destroyed, hurting you by proximity
+  (up to 30%) or by half your health if you are still inside
+- Run out of health and you wake up outside the hospital
 
 ## Run it
 
@@ -49,7 +53,7 @@ src/config.js   every tunable number and colour, in one place
 src/math.js     vectors, clamp, circle/AABB/segment collisions
 src/input.js    key state, edge-triggered presses, mouse -> world
 map/city.js     the city as an ASCII grid + car spawns
-src/world.js    ASCII -> collision boxes, spatial index, ground/building draws
+src/world.js    ASCII -> collision boxes, special buildings, spatial index, drawing
 src/camera.js   smoothed follow camera, world clamping, screen shake
 src/blood.js    permanent blood decals (cached Path2D per splat)
 src/peds.js     pedestrian state machine: walk, enter/exit houses, flee, die
@@ -98,6 +102,22 @@ and drops a blood decal. Cars kill above `KILL_SPEED` and merely shoulder
 people aside below it. Bullets kill through `Bullets.update`'s optional
 pedestrian arguments, so drive-by shooting is a one-line change later.
 
+**Special buildings.** The map uses `P` and `H` tiles, both solid. Because the
+solid-merging pass keys runs by character, the police station and the hospital
+come out as their own collision boxes with `kind: 'police'` / `'hospital'`,
+which is how `world.policeStation` and `world.hospital` find their footprints.
+`world.hospitalSpawn` is solved at load time: the first side of the hospital
+whose pavement is clear wins, so the respawn point is never inside a wall.
+
+**Explosions and health.** A car at zero chassis health is *not* deleted
+immediately — it stays in the list flagged as wrecked, and `explodeDeadCars()`
+runs at the top of the next step. Doing it there (rather than mid-collision)
+means the blast is always measured from the position where the car died, so
+damage is deterministic. `M.blastDamage(d, radius, max)` falls off linearly,
+giving the full 30% at the centre and nothing at the rim; being inside the car
+is a flat 50% instead. Zero health calls `respawnPlayer()`, which teleports you
+to `world.hospitalSpawn` at full health.
+
 **Rendering.** Ground tiles are drawn per frame with culling; buildings are
 slightly darker rectangles with a lighter roof, a fake "wall" band on the south
 and east edges, and a window pattern, which is enough to read them as 3D.
@@ -119,14 +139,18 @@ Everything lives in `src/config.js`. The ones worth touching first:
 | `PED_DOOR_CHANCE` | how often people duck into houses |
 | `KILL_SPEED` | car speed above which people are flattened instead of nudged |
 | `SPLAT_MAX` | how many blood decals stay on the map |
+| `EXPLOSION_RADIUS` | blast radius of a car that blows up |
+| `EXPLOSION_DMG_FRAC` | share of max health lost at the blast centre (0.30) |
+| `EXPLOSION_IN_CAR_FRAC` | share lost if the car you are in explodes (0.50) |
 
 ## Tests
 
 ```bash
-# 76 assertions: collisions, car physics, world parsing, bullets, peds, blood, camera
+# 93 assertions: collisions, car physics, world parsing, bullets, peds, blood,
+#                special buildings, blast damage, camera
 open tests.html          # or: python3 -m http.server 8000 → /tests.html
 
-# 32 assertions: boots the game and simulates real key input
+# 48 assertions: boots the game and simulates real key/mouse input
 open smoke.html
 ```
 
@@ -142,6 +166,7 @@ Both print green/red rows and a summary line. They also expose
 ## Not implemented (deliberately, for this prototype)
 
 Drive-by shooting, NPC traffic, police/wanted level, sound, sprites, rotating
-(GTA2-style) camera, saving. The data hooks exist: `world.cars`, `Car.hp`,
-`Bullets.owner` takes any entity, and `Bullets.update` already accepts a
-pedestrian list for the shooting callback.
+(GTA2-style) camera, saving, healing inside the hospital. The data hooks exist:
+`world.cars`, `Car.hp`, `Bullets.owner` takes any entity, `Bullets.update`
+already accepts a pedestrian list for the shooting callback, and the police
+station is parsed and drawn but has no behaviour attached yet.
