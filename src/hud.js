@@ -42,7 +42,7 @@ CJ.HUD = (function () {
     if (els.hint) {
       var hint = driving
         ? 'ARROWS / WASD drive   ·   E get out   ·   R reset   ·   P pause   ·   F1 debug'
-        : 'ARROWS / WASD run   ·   SPACE shoot   ·   E enter car   ·   R reset   ·   P pause   ·   F1 debug';
+        : 'ARROWS / WASD run   ·   MOUSE / CLICK shoot   ·   E enter car   ·   R reset   ·   P pause   ·   F1 debug';
       setText(els.hint, hint);
     }
 

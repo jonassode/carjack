@@ -6,7 +6,12 @@ CJ.Input = (function () {
 
   var keys = {};        // event.code -> true while held
   var pressed = {};     // event.code -> true for exactly one sim step
-  var mouse = { sx: 0, sy: 0, down: false, inside: false, moved: false };
+  var buttons = 0;      // bitmask of held mouse buttons
+  var mouse = { sx: 0, sy: 0, down: false, inside: false, moved: false, button: -1 };
+
+  // Mouse buttons that shoot: left and right. Right is safe because the context
+  // menu is suppressed below.
+  var FIRE_BUTTONS = [0, 2];
 
   // Both WASD and the arrow keys drive the same axes.
   var AXES = {
@@ -42,7 +47,21 @@ CJ.Input = (function () {
   function clearAll() {
     keys = {};
     pressed = {};
+    buttons = 0;
     mouse.down = false;
+    mouse.button = -1;
+  }
+
+  function firing() {
+    for (var i = 0; i < FIRE_BUTTONS.length; i++) {
+      if (buttons & (1 << FIRE_BUTTONS[i])) return true;
+    }
+    return false;
+  }
+
+  function syncDown() {
+    mouse.down = firing();
+    if (!mouse.down) mouse.button = -1;
   }
 
   function init(canvas) {
@@ -58,8 +77,20 @@ CJ.Input = (function () {
       mouse.inside = true;
       mouse.moved = true;
     });
-    canvas.addEventListener('mousedown', function (e) { e.preventDefault(); mouse.down = true; });
-    window.addEventListener('mouseup', function () { mouse.down = false; });
+    canvas.addEventListener('mousedown', function (e) {
+      if (e.button === 0 || e.button === 2) {
+        e.preventDefault();
+        buttons |= (1 << e.button);
+        mouse.button = e.button;
+        syncDown();
+      }
+    });
+
+    // Listen on the window so a release outside the canvas still stops firing.
+    window.addEventListener('mouseup', function (e) {
+      buttons &= ~(1 << e.button);
+      syncDown();
+    });
     canvas.addEventListener('mouseleave', function () { mouse.inside = false; });
   }
 
@@ -71,6 +102,11 @@ CJ.Input = (function () {
     down: function (name) { return anyDown(AXES[name] || [name]); },
     key: function (code) { return !!keys[code]; },
     pressed: function (code) { return !!pressed[code]; },
+
+    // True while a firing mouse button is held (left or right).
+    firing: firing,
+    // True while ANY mouse button is held.
+    get mouseDown() { return buttons !== 0; },
 
     // Direct movement vector, normalised so diagonals are not faster.
     axis: function () {

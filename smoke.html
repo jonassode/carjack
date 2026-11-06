@@ -94,6 +94,24 @@
     tick(1);
   }
 
+  // Shooting is on the mouse now: mousedown lands on the canvas, mouseup is
+  // caught on the window (so releasing outside the canvas still stops fire).
+  function holdMouse(steps, button) {
+    var canvas = document.getElementById('game');
+    canvas.dispatchEvent(new MouseEvent('mousedown', {
+      button: button === undefined ? 0 : button,
+      buttons: 1,
+      bubbles: true,
+      cancelable: true
+    }));
+    tick(steps);
+    window.dispatchEvent(new MouseEvent('mouseup', {
+      button: button === undefined ? 0 : button,
+      bubbles: true
+    }));
+    tick(1);
+  }
+
   function state() { return window.CJGame.getState(); }
 
   function insideSolid(s, obj, r) { return s.world.isSolidAt(obj.x, obj.y, r); }
@@ -166,7 +184,7 @@ function run() {
       document.getElementById('hud-speed').textContent + ' km/h');
 
     CJ.Bullets.clear();
-    hold('Space', 15);
+    holdMouse(15);
     assert('cannot shoot while driving', state().bulletsLive === 0);
 
     // --- running people over ---------------------------------------------
@@ -198,9 +216,26 @@ function run() {
 
     // --- shooting --------------------------------------------------------
     CJ.Bullets.clear();
-    hold('Space', 15);
+    holdMouse(15);
     s = state();
-    assert('Space fires bullets on foot', s.bulletsLive > 0, s.bulletsLive + ' live');
+    assert('clicking fires bullets on foot', s.bulletsLive > 0, s.bulletsLive + ' live');
+
+    // Right click fires too.
+    CJ.Bullets.clear();
+    holdMouse(15, 2);
+    assert('right-clicking also fires', state().bulletsLive > 0,
+      state().bulletsLive + ' live');
+
+    // Space must no longer shoot.
+    CJ.Bullets.clear();
+    hold('Space', 15);
+    assert('Space no longer fires', state().bulletsLive === 0);
+
+    // Holding the button keeps firing (respecting the cooldown).
+    CJ.Bullets.clear();
+    holdMouse(30);
+    assert('holding the button keeps firing', state().bulletsLive > 1,
+      state().bulletsLive + ' live');
 
     // --- pause -----------------------------------------------------------
     tap('KeyP');
@@ -236,7 +271,7 @@ function run() {
     target.x = s.player.x + 60;
     target.y = s.player.y;
     s.player.aim = 0;
-    hold('Space', 15);
+    holdMouse(15);
     s = state();
     assert('shooting a pedestrian kills them', target.dead === true);
     assert('shooting someone leaves a blood splat', s.splats > 0, s.splats + ' splats');

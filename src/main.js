@@ -324,7 +324,7 @@ window.CJ = window.CJ || {};
       player.vy = driven.vy;
     } else {
       player.update(dt, axis, world);
-      if (I.key('Space') && player.canFire()) fire();
+      if (I.firing() && player.canFire()) fire();
     }
 
     // Parked cars keep settling (and coast after an exit).

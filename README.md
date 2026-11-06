@@ -5,7 +5,7 @@ flat geometric shapes — no sprites, no images, no assets at all.
 
 - Drive a car around a city of streets, houses, parks and trees
 - Press **E** to jump out and run around on foot
-- On foot, aim with the mouse and shoot with **Space**
+- On foot, aim with the mouse and shoot by **clicking** (or holding the button)
 - Pedestrians wander the sidewalks, duck in and out of houses, scatter from
   speeding cars — and turn into a blood splat if you run them over or shoot them
 
@@ -24,19 +24,20 @@ works from `file://` too).
 
 ## Controls
 
-| Key | On foot | In a car |
+| Input | On foot | In a car |
 | --- | --- | --- |
 | `W` / `↑` | run up | accelerate |
 | `S` / `↓` | run down | brake, then reverse |
 | `A` / `←` | run left | steer left |
 | `D` / `→` | run right | steer right |
 | `E` | get into the nearest car | get out |
-| `Space` | shoot | — |
+| Mouse move | aim | — |
+| **Left or right click** | **shoot** (hold to keep firing) | — |
 | `R` | reset player + cars to spawn | |
 | `P` | pause / resume | |
 | `F1` | toggle debug overlay (hitboxes, FPS, coords) | |
 
-Mouse aims; a crosshair is drawn at the cursor.
+A crosshair is drawn at the cursor while you are on foot.
 
 ## Layout
 
