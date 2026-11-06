@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Carjack — smoke test</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #0d1014; color: #e6e9ee;
+         font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  #game { position: fixed; inset: 0; opacity: 0.25; }
+  #out { position: relative; padding: 20px; }
+  .row { display: flex; gap: 10px; padding: 2px 0; }
+  .tag { width: 52px; flex: none; font-weight: 700; }
+  .pass { color: #7ee081; }
+  .fail { color: #ff6b6b; }
+  .detail { color: #7c858f; }
+  #summary { margin-top: 14px; font-weight: 700; font-size: 14px; padding: 0 20px 20px; }
+  #hud { display: none; }
+</style>
+</head>
+<body>
+<!-- The real game, with a minimal but complete HUD DOM so main.js can boot. -->
+<canvas id="game"></canvas>
+<div id="hud">
+  <span id="hud-mode"></span>
+  <span id="hud-speed"></span>
+  <span id="hud-speed-unit"></span>
+  <div id="hud-health-fill"></div>
+  <div id="hud-car-health"><div id="hud-car-health-fill"></div></div>
+  <div id="hud-hint"></div>
+  <div id="hud-paused"></div>
+</div>
+
+<div id="out"></div>
+<div id="summary">running…</div>
+
+<script src="src/config.js"></script>
+<script src="src/math.js"></script>
+<script src="map/city.js"></script>
+<script src="src/input.js"></script>
+<script src="src/world.js"></script>
+<script src="src/camera.js"></script>
+<script src="src/bullet.js"></script>
+<script src="src/car.js"></script>
+<script src="src/player.js"></script>
+<script src="src/hud.js"></script>
+<script src="src/main.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var out = document.getElementById('out');
+  var pass = 0, fail = 0;
+
+  function assert(name, cond, detail) {
+    var ok = !!cond;
+    if (ok) pass++; else fail++;
+    var row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = '<span class="tag ' + (ok ? 'pass' : 'fail') + '">' +
+      (ok ? 'PASS' : 'FAIL') + '</span><span>' + name + '</span>' +
+      '<span class="detail">' + (detail === undefined ? '' : detail) + '</span>';
+    out.appendChild(row);
+  }
+
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  function key(type, code) {
+    window.dispatchEvent(new KeyboardEvent(type, { code: code, bubbles: true }));
+  }
+
+  // The simulation is driven explicitly instead of by requestAnimationFrame so
+  // the test is deterministic (and so it works in headless browsers, which do
+  // not composite and therefore fire rAF at most once).
+  function tick(n) {
+    for (var i = 0; i < n; i++) window.CJGame.step(CJ.CFG.DT);
+  }
+
+  // Hold a key for n fixed steps, then release it.
+  function hold(code, steps) {
+    key('keydown', code);
+    tick(steps);
+    key('keyup', code);
+    tick(1);
+  }
+
+  // One press that is guaranteed to be seen as an edge trigger.
+  function tap(code) {
+    key('keydown', code);
+    tick(1);
+    key('keyup', code);
+    tick(1);
+  }
+
+  function state() { return window.CJGame.getState(); }
+
+  function insideSolid(s, obj, r) { return s.world.isSolidAt(obj.x, obj.y, r); }
+
+  function finish() {
+    var summary = document.getElementById('summary');
+    summary.textContent = pass + ' passed, ' + fail + ' failed';
+    summary.className = fail === 0 ? 'pass' : 'fail';
+    window.__SMOKE_RESULT__ = { pass: pass, fail: fail };
+    console.log('[carjack smoke] ' + pass + ' passed, ' + fail + ' failed');
+  }
+function run() {
+    tick(2);
+    var s = state();
+
+    assert('game booted', !!s && !!s.player, 'player at ' +
+      (s ? s.player.x.toFixed(0) + ',' + s.player.y.toFixed(0) : 'none'));
+    assert('8 cars spawned', s.cars.length === 8, s.cars.length + ' cars');
+
+    // --- walking ---------------------------------------------------------
+    var startY = s.player.y;
+    hold('ArrowDown', 54);
+    s = state();
+    assert('ArrowDown walks the player', s.player.y > startY + 10,
+      'y ' + startY.toFixed(0) + ' -> ' + s.player.y.toFixed(0));
+
+    var startY2 = s.player.y;
+    hold('KeyW', 24);
+    s = state();
+    assert('WASD also walks the player', s.player.y < startY2 - 5,
+      'y ' + startY2.toFixed(0) + ' -> ' + s.player.y.toFixed(0));
+    assert('player never ends inside a building',
+      !insideSolid(s, s.player, CJ.CFG.P_RADIUS - 1),
+      s.player.x.toFixed(0) + ',' + s.player.y.toFixed(0));
+
+    // --- enter car -------------------------------------------------------
+    hold('ArrowDown', 42);                 // walk back down to the parked car
+    s = state();
+    var bestD = 1e9;
+    for (var i = 0; i < s.cars.length; i++) {
+      var d = CJ.M.dist(s.player.x, s.player.y, s.cars[i].x, s.cars[i].y);
+      if (d < bestD) bestD = d;
+    }
+    tap('KeyE');
+    s = state();
+    assert('E puts the player in the nearest car', !!s.player.driving,
+      'nearest car ' + bestD.toFixed(0) + 'px away');
+    if (!s.player.driving) { finish(); return; }
+    assert('camera switches to the car', s.cam.target === s.player.driving);
+
+    // --- driving ---------------------------------------------------------
+    var car = s.player.driving;
+    var cx = car.x, cy = car.y;
+    hold('ArrowUp', 72);
+    s = state();
+    assert('ArrowUp accelerates the car', Math.abs(car.speed) > 20,
+      'speed ' + car.speed.toFixed(0));
+    assert('the car moved', CJ.M.dist(cx, cy, car.x, car.y) > 30,
+      'moved ' + CJ.M.dist(cx, cy, car.x, car.y).toFixed(0) + 'px');
+    assert('the car is not inside a building',
+      !insideSolid(s, car, CJ.CFG.CAR_RADIUS - 1),
+      car.x.toFixed(0) + ',' + car.y.toFixed(0));
+
+    window.CJGame.render();                 // HUD text is refreshed during a frame
+    assert('speedometer reports a speed',
+      Number(document.getElementById('hud-speed').textContent) > 0,
+      document.getElementById('hud-speed').textContent + ' km/h');
+
+    CJ.Bullets.clear();
+    hold('Space', 15);
+    assert('cannot shoot while driving', state().bulletsLive === 0);
+
+    // --- exit ------------------------------------------------------------
+    tap('KeyE');
+    s = state();
+    assert('E gets the player back out', !s.player.driving);
+    assert('exit spot is walkable',
+      !insideSolid(s, s.player, CJ.CFG.P_RADIUS - 1),
+      s.player.x.toFixed(0) + ',' + s.player.y.toFixed(0));
+    assert('camera switches back to the player', s.cam.target === s.player);
+
+    // --- shooting --------------------------------------------------------
+    CJ.Bullets.clear();
+    hold('Space', 15);
+    s = state();
+    assert('Space fires bullets on foot', s.bulletsLive > 0, s.bulletsLive + ' live');
+
+    // --- pause -----------------------------------------------------------
+    tap('KeyP');
+    s = state();
+    var px = s.player.x, py = s.player.y;
+    hold('ArrowRight', 30);
+    s = state();
+    assert('P freezes the simulation',
+      s.paused && s.player.x === px && s.player.y === py,
+      'x ' + px.toFixed(1) + ' -> ' + s.player.x.toFixed(1));
+    tap('KeyP');
+    assert('P resumes the simulation', !state().paused);
+
+    // --- reset -----------------------------------------------------------
+    tap('KeyR');
+    s = state();
+    assert('R resets the player to spawn',
+      s.player.x === s.world.playerSpawn.x && s.player.y === s.world.playerSpawn.y);
+    assert('R restores all cars', s.cars.length === 8, s.cars.length + ' cars');
+    assert('R clears bullets', s.bulletsLive === 0);
+
+    // --- rendering must not throw ----------------------------------------
+    var rendered = true;
+    try { window.CJGame.render(); } catch (e) { rendered = false; }
+    assert('a full frame renders without throwing', rendered);
+
+    finish();
+  }
+
+  function start() {
+    try {
+      run();
+    } catch (err) {
+      var box = document.getElementById('summary');
+      box.textContent = 'ERROR: ' + (err && err.message) + ' @ ' +
+        (err && err.stack ? err.stack.split('\n')[1] : '');
+      box.className = 'fail';
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start);
+  } else {
+    start();
+  }
+})();
+</script>
+</body>
+</html>

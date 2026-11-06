@@ -1,0 +1,70 @@
+// Carjack - central tuning table. Change numbers here to change game feel.
+window.CJ = window.CJ || {};
+
+CJ.CFG = {
+  // --- world / loop -------------------------------------------------------
+  TILE: 64,            // pixels per map tile
+  DT: 1 / 60,          // fixed simulation step (seconds)
+  MAX_FRAME: 0.25,     // clamp huge frame gaps (tab switch) to avoid spiral
+
+  // --- player on foot -----------------------------------------------------
+  P_SPEED: 165,        // px/s top walking speed
+  P_ACCEL: 12,         // velocity smoothing rate (higher = snappier)
+  P_RADIUS: 9,         // collision circle radius
+  P_FIRE_CD: 0.15,     // seconds between shots
+  P_HP: 100,
+
+  // --- car ----------------------------------------------------------------
+  CAR_ACCEL: 520,      // forward acceleration px/s^2
+  CAR_BRAKE: 900,      // brake deceleration while rolling forward
+  CAR_MAX: 480,        // top speed px/s
+  CAR_MAX_REV: -160,   // top reverse speed
+  CAR_ROLL: 60,        // rolling resistance px/s^2
+  STEER_RATE: 2.6,     // rad/s at full steering lock
+  STEER_REF: 120,      // speed at which steering reaches full authority
+  GRIP: 6.0,           // lateral velocity damping (low = drifty)
+  CAR_LEN: 44,
+  CAR_W: 22,
+  CAR_RADIUS: 11,      // = CAR_W / 2, collision capsule radius
+  CAR_HP: 100,
+  CAR_CRASH_DAMP: 0.55, // speed multiplier applied on wall impact
+
+  // --- enter / exit -------------------------------------------------------
+  ENTER_RANGE: 46,     // max distance to press E into a car
+  EXIT_OFFSET: 26,     // how far to step out from car centre
+  EXIT_GRACE: 0.4,     // seconds of car<->player collision immunity after exit
+
+  // --- bullets ------------------------------------------------------------
+  B_SPEED: 900,
+  B_TTL: 1.2,
+  B_RADIUS: 2.5,
+  B_DAMAGE: 34,
+
+  // --- camera -------------------------------------------------------------
+  CAM_LERP: 6,         // follow smoothing rate
+  CAM_LEAD: 0.25,      // how far ahead of velocity the camera looks
+  SHAKE_DECAY: 7,
+
+  // --- palette (all geometry is drawn with flat colours) -------------------
+  COL: {
+    grass:      '#22382a',
+    grassAlt:   '#26412f',
+    road:       '#2b2f36',
+    roadAlt:    '#2e323a',
+    sidewalk:   '#565c66',
+    sidewalkAlt:'#5b616b',
+    laneMark:   '#d9d06a',
+    building:   '#3d4551',
+    buildingAlt:'#444d5a',
+    buildingSide:'#222932',
+    outline:    'rgba(8,10,14,0.55)',
+    shadow:     'rgba(0,0,0,0.34)',
+    player:     '#eef2f7',
+    playerArm:  '#9aa3ae',
+    skin:       '#f0c090',
+    bullet:     '#ffe27a',
+    hudText:    '#e6e9ee'
+  },
+
+  CAR_COLORS: ['#b8402f', '#2f6fb8', '#c9a227', '#2f9e6b', '#8d4fc9', '#c96a2f']
+};

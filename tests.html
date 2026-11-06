@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Carjack — tests</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 24px;
+    background: #0d1014; color: #e6e9ee;
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  h1 { font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; color: #9aa3ae; font-weight: 600; }
+  .row { display: flex; gap: 10px; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .tag { width: 52px; flex: none; font-weight: 700; }
+  .pass { color: #7ee081; }
+  .fail { color: #ff6b6b; }
+  .name { flex: 1; }
+  .detail { color: #7c858f; font-size: 12px; }
+  #summary { margin-top: 18px; font-size: 14px; font-weight: 700; }
+</style>
+</head>
+<body>
+<h1>Carjack — assertion suite</h1>
+<div id="out"></div>
+<div id="summary">running…</div>
+
+<script src="src/config.js"></script>
+<script src="src/math.js"></script>
+<script src="map/city.js"></script>
+<script src="src/world.js"></script>
+<script src="src/camera.js"></script>
+<script src="src/bullet.js"></script>
+<script src="src/car.js"></script>
+<script src="src/player.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var M = CJ.M;
+  var out = document.getElementById('out');
+  var pass = 0, fail = 0;
+
+  function assert(name, cond, detail) {
+    var ok = !!cond;
+    if (ok) pass++; else fail++;
+    var row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML =
+      '<span class="tag ' + (ok ? 'pass' : 'fail') + '">' + (ok ? 'PASS' : 'FAIL') + '</span>' +
+      '<span class="name">' + name + '</span>' +
+      '<span class="detail">' + (detail === undefined ? '' : detail) + '</span>';
+    out.appendChild(row);
+  }
+
+  function near(a, b, eps) { return Math.abs(a - b) <= (eps || 1e-6); }
+
+  // A stand-alone world with hand-placed boxes: physics tests must not depend
+  // on the real city layout.
+  function fakeWorld(solids) {
+    return {
+      w: 2000, h: 2000, solids: solids,
+      solidsNear: function (x, y, r) {
+        var o = [];
+        for (var i = 0; i < solids.length; i++) {
+          var b = solids[i];
+          if (x + r < b.x || x - r > b.x + b.w) continue;
+          if (y + r < b.y || y - r > b.y + b.h) continue;
+          o.push(b);
+        }
+        return o;
+      },
+      isSolidAt: function (x, y, r) {
+        var n = this.solidsNear(x, y, r);
+        for (var i = 0; i < n.length; i++) {
+          if (M.circleVsAABB(x, y, r, n[i])) return true;
+        }
+        return false;
+      }
+    };
+  }
+
+  // ---------------------------------------------------------------- math
+  assert('clamp', M.clamp(5, 0, 3) === 3 && M.clamp(-5, 0, 3) === 0);
+  assert('lerp', near(M.lerp(0, 10, 0.25), 2.5));
+  assert('sign', M.sign(-2) === -1 && M.sign(0) === 0 && M.sign(9) === 1);
+  assert('norm unit length', near(M.len(M.norm(3, 4).x, M.norm(3, 4).y), 1));
+  assert('hash2 in range + stable',
+    M.hash2(3, 7) === M.hash2(3, 7) && M.hash2(3, 7) >= 0 && M.hash2(3, 7) <= 1);
+
+  // ---------------------------------------------------------------- circle vs AABB
+  var box = { x: 0, y: 0, w: 10, h: 10 };
+  assert('circleVsAABB: clear', M.circleVsAABB(20, 5, 3, box) === null);
+  assert('circleVsAABB: touching', M.circleVsAABB(12, 5, 3, box) !== null);
+  assert('circleVsAABB: just clear', M.circleVsAABB(13.01, 5, 3, box) === null);
+
+  var hit = M.circleVsAABB(12, 5, 3, box);
+  assert('circleVsAABB: normal points away',
+    hit && near(hit.nx, 1) && near(hit.ny, 0) && near(hit.depth, 1),
+    hit ? 'n=(' + hit.nx + ',' + hit.ny + ') d=' + hit.depth.toFixed(2) : 'null');
+
+  var inside = M.circleVsAABB(1, 5, 3, box);
+  assert('circleVsAABB: centre inside pushes out',
+    inside && near(inside.nx, -1) && near(inside.depth, 4),
+    inside ? 'n=(' + inside.nx + ',' + inside.ny + ') d=' + inside.depth : 'null');
+
+  var corner = M.circleVsAABB(11, 11, 3, box);
+  assert('circleVsAABB: corner normal is diagonal',
+    corner && corner.nx > 0.5 && corner.ny > 0.5);
+
+  // ---------------------------------------------------------------- segment vs AABB
+  assert('segVsAABB: through', M.segVsAABB(-20, 5, 20, 5, box) >= 0);
+  assert('segVsAABB: miss', M.segVsAABB(-20, 50, 20, 50, box) === -1);
+  assert('segVsAABB: stops short', M.segVsAABB(-20, 5, -5, 5, box) === -1);
+  assert('segVsAABB: vertical', M.segVsAABB(5, -20, 5, 20, box) >= 0);
+
+  var t = M.segVsAABB(-20, 5, 20, 5, box);
+  assert('segVsAABB: entry parameter', near(t, 20 / 40, 1e-6), 't=' + t);
+
+  // ---------------------------------------------------------------- circle vs circle
+  assert('circleVsCircle: overlap', M.circleVsCircle(0, 0, 5, 6, 0, 5) !== null);
+  assert('circleVsCircle: apart', M.circleVsCircle(0, 0, 5, 30, 0, 5) === null);
+
+  // ---------------------------------------------------------------- world parse
+  var world = CJ.World;
+  world.init(CJ.MAP_CITY);
+
+  assert('world: 64x64 tiles', world.cols === 64 && world.rows === 64,
+    world.cols + 'x' + world.rows);
+  assert('world: pixel size', world.w === 64 * CJ.CFG.TILE && world.h === 64 * CJ.CFG.TILE,
+    world.w + 'x' + world.h);
+  assert('world: merged solids exist', world.solids.length > 200, world.solids.length + ' boxes');
+
+  var rowLens = {};
+  for (var i = 0; i < CJ.MAP_CITY.rows.length; i++) rowLens[CJ.MAP_CITY.rows[i].length] = 1;
+  assert('world: every row is the same width', Object.keys(rowLens).length === 1,
+    Object.keys(rowLens).join(','));
+
+  assert('world: player spawn is walkable',
+    !world.isSolidAt(world.playerSpawn.x, world.playerSpawn.y, CJ.CFG.P_RADIUS),
+    world.playerSpawn.x + ',' + world.playerSpawn.y);
+
+  assert('world: car spawns exist', world.carSpawns.length === CJ.MAP_CITY.cars.length,
+    world.carSpawns.length + ' cars');
+
+  assert('world: car spawns are not inside walls', world.carSpawns.every(function (c) {
+    return !world.isSolidAt(c.x, c.y, CJ.CFG.CAR_RADIUS);
+  }));
+
+  // ---------------------------------------------------------------- car physics
+  var flat = fakeWorld([]);
+  var a = new CJ.Car({ x: 100, y: 100, h: 0 });
+  for (i = 0; i < 600; i++) { a.update(CJ.CFG.DT, { throttle: 1, steer: 0 }); a.integrate(CJ.CFG.DT, flat); }
+  var b = new CJ.Car({ x: 100, y: 100, h: 0 });
+  for (i = 0; i < 600; i++) { b.update(CJ.CFG.DT, { throttle: 1, steer: 0 }); b.integrate(CJ.CFG.DT, flat); }
+  assert('car: deterministic over 600 steps',
+    near(a.x, b.x, 1e-9) && near(a.y, b.y, 1e-9), 'x=' + a.x.toFixed(3));
+
+  assert('car: accelerates forward', a.x > 100 + 200, 'x=' + a.x.toFixed(0));
+  assert('car: holds its lane when not steering', near(a.y, 100, 0.5), 'y=' + a.y.toFixed(2));
+
+  var top = new CJ.Car({ x: 100, y: 100, h: 0 });
+  for (i = 0; i < 1200; i++) top.update(CJ.CFG.DT, { throttle: 1, steer: 0 });
+  assert('car: top speed clamped', near(top.speed, CJ.CFG.CAR_MAX, 0.5), top.speed.toFixed(1));
+
+  var rev = new CJ.Car({ x: 500, y: 500, h: 0 });
+  for (i = 0; i < 600; i++) { rev.update(CJ.CFG.DT, { throttle: -1, steer: 0 }); rev.integrate(CJ.CFG.DT, flat); }
+  assert('car: reverses', rev.x < 500, 'x=' + rev.x.toFixed(0));
+
+  var still = new CJ.Car({ x: 300, y: 300, h: 0 });
+  still.update(CJ.CFG.DT, { throttle: 0, steer: 1 });
+  assert('car: cannot steer while stopped', still.heading === 0);
+
+  var turner = new CJ.Car({ x: 300, y: 300, h: 0 });
+  for (i = 0; i < 30; i++) { turner.update(CJ.CFG.DT, { throttle: 1, steer: 1 }); turner.integrate(CJ.CFG.DT, flat); }
+  assert('car: steering changes heading', turner.heading > 0.3, 'h=' + turner.heading.toFixed(2));
+
+  // ---------------------------------------------------------------- car vs wall
+  var wall = fakeWorld([{ x: 500, y: 0, w: 64, h: 1000, kind: 'building' }]);
+  var crasher = new CJ.Car({ x: 100, y: 500, h: 0 });
+  for (i = 0; i < 900; i++) { crasher.update(CJ.CFG.DT, { throttle: 1, steer: 0 }); crasher.integrate(CJ.CFG.DT, wall); }
+  var nose = crasher.x + CJ.CFG.CAR_LEN / 2;
+  assert('car: does not tunnel through a wall at full speed', nose <= 501,
+    'nose x=' + nose.toFixed(2));
+  assert('car: not intersecting the wall',
+    !wall.isSolidAt(crasher.x, crasher.y, CJ.CFG.CAR_RADIUS - 1));
+
+  // ---------------------------------------------------------------- player vs wall
+  var pw = fakeWorld([{ x: 500, y: 0, w: 64, h: 1000, kind: 'building' }]);
+  var pl = new CJ.Player(400, 500);
+  for (i = 0; i < 300; i++) pl.update(CJ.CFG.DT, { x: 1, y: 0 }, pw);
+  assert('player: blocked by a wall',
+    pl.x + CJ.CFG.P_RADIUS <= 500.5 && !pw.isSolidAt(pl.x, pl.y, CJ.CFG.P_RADIUS - 1),
+    'x=' + pl.x.toFixed(2));
+
+  var pw2 = fakeWorld([{ x: 500, y: 500, w: 64, h: 64, kind: 'building' }]);
+  var pl2 = new CJ.Player(400, 400);
+  for (i = 0; i < 300; i++) pl2.update(CJ.CFG.DT, { x: 0.7071, y: 0.7071 }, pw2);
+  assert('player: slides past a corner without sticking',
+    !pw2.isSolidAt(pl2.x, pl2.y, CJ.CFG.P_RADIUS - 1),
+    'pos=' + pl2.x.toFixed(1) + ',' + pl2.y.toFixed(1));
+
+  var pl3 = new CJ.Player(10, 10);
+  for (i = 0; i < 300; i++) pl3.update(CJ.CFG.DT, { x: -1, y: -1 }, flat);
+  assert('player: clamped to world bounds',
+    pl3.x >= CJ.CFG.P_RADIUS - 0.01 && pl3.y >= CJ.CFG.P_RADIUS - 0.01,
+    'pos=' + pl3.x.toFixed(1) + ',' + pl3.y.toFixed(1));
+
+  // ---------------------------------------------------------------- bullets
+  CJ.Bullets.clear();
+  var bw = fakeWorld([{ x: 300, y: 0, w: 64, h: 1000, kind: 'building' }]);
+  CJ.Bullets.spawn(100, 500, 0, null);
+  for (i = 0; i < 60 && CJ.Bullets.liveCount > 0; i++) CJ.Bullets.update(CJ.CFG.DT, bw, [], null);
+  assert('bullets: destroyed by a wall', CJ.Bullets.liveCount === 0);
+
+  CJ.Bullets.clear();
+  CJ.Bullets.spawn(100, 500, 0, null);
+  for (i = 0; i < 6; i++) CJ.Bullets.update(CJ.CFG.DT, flat, [], null);
+  assert('bullets: survive in open space', CJ.Bullets.liveCount === 1);
+
+  CJ.Bullets.clear();
+  var bulletTarget = { x: 220, y: 500, hp: 100 };
+  CJ.Bullets.spawn(100, 500, 0, null);
+  var hitCalled = 0;
+  for (i = 0; i < 30 && CJ.Bullets.liveCount > 0; i++) {
+    CJ.Bullets.update(CJ.CFG.DT, flat, [bulletTarget], function () { hitCalled++; });
+  }
+  assert('bullets: hit a car exactly once', hitCalled === 1 && CJ.Bullets.liveCount === 0,
+    'hits=' + hitCalled);
+
+  CJ.Bullets.clear();
+  CJ.Bullets.spawn(100, 500, 0, null);
+  for (i = 0; i < 200; i++) CJ.Bullets.update(CJ.CFG.DT, flat, [], null);
+  assert('bullets: expire after ttl', CJ.Bullets.liveCount === 0);
+
+  CJ.Bullets.clear();
+  var shooter = { x: 100, y: 500 };
+  CJ.Bullets.spawn(100, 500, 0, shooter);
+  var selfHit = 0;
+  for (i = 0; i < 10; i++) {
+    CJ.Bullets.update(CJ.CFG.DT, flat, [shooter], function () { selfHit++; });
+  }
+  assert('bullets: never hit their owner', selfHit === 0);
+  CJ.Bullets.clear();
+
+  // ---------------------------------------------------------------- camera
+  var cam = CJ.Camera;
+  cam.setViewport(800, 600);
+  cam.setTarget({ x: 0, y: 0, vx: 0, vy: 0 }, true);
+  for (i = 0; i < 240; i++) cam.update(CJ.CFG.DT, world);
+  assert('camera: clamped at the top-left corner', cam.x === 400 && cam.y === 300,
+    cam.x + ',' + cam.y);
+
+  cam.setTarget({ x: world.w, y: world.h, vx: 0, vy: 0 }, true);
+  for (i = 0; i < 240; i++) cam.update(CJ.CFG.DT, world);
+  assert('camera: clamped at the bottom-right corner',
+    cam.x === world.w - 400 && cam.y === world.h - 300, cam.x + ',' + cam.y);
+
+  var sc = cam.screenToWorld(400, 300);
+  assert('camera: screen centre maps to the camera position',
+    near(sc.x, cam.x) && near(sc.y, cam.y));
+
+  // ---------------------------------------------------------------- city sanity
+  var carInWall = 0;
+  for (i = 0; i < world.carSpawns.length; i++) {
+    var cs = world.carSpawns[i];
+    if (world.isSolidAt(cs.x, cs.y, CJ.CFG.CAR_RADIUS)) carInWall++;
+  }
+  assert('city: no car spawn overlaps a building', carInWall === 0, carInWall + ' bad');
+
+  var roadCount = 0;
+  for (var ty = 0; ty < world.rows; ty++) {
+    for (var tx = 0; tx < world.cols; tx++) {
+      if (world.tileChar(tx, ty) === '=') roadCount++;
+    }
+  }
+  assert('city: has a street grid', roadCount > 900, roadCount + ' road tiles');
+
+  // ---------------------------------------------------------------- done
+  var summary = document.getElementById('summary');
+  summary.textContent = pass + ' passed, ' + fail + ' failed';
+  summary.className = fail === 0 ? 'pass' : 'fail';
+  console.log('[carjack tests] ' + pass + ' passed, ' + fail + ' failed');
+
+  window.__TEST_RESULT__ = { pass: pass, fail: fail };
+})();
+</script>
+</body>
+</html>
