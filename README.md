@@ -11,7 +11,9 @@ flat geometric shapes — no sprites, no images, no assets at all.
 - One police station and one hospital, both marked on the minimap
 - Cars explode when their chassis is destroyed, hurting you by proximity
   (up to 30%) or by half your health if you are still inside
-- Run out of health and you wake up outside the hospital
+- Run out of health and you are **WASTED** — you lose $25 and must click the
+  respawn button to wake up outside the hospital
+- You start with $100 and can never go below $0
 
 ## Run it
 
@@ -41,7 +43,8 @@ works from `file://` too).
 | `P` | pause / resume | |
 | `F1` | toggle debug overlay (hitboxes, FPS, coords) | |
 
-A crosshair is drawn at the cursor while you are on foot.
+A crosshair is drawn at the cursor while you are on foot. When you are wasted,
+click **Respawn at hospital** to carry on.
 
 ## Layout
 
@@ -60,7 +63,7 @@ src/peds.js     pedestrian state machine: walk, enter/exit houses, flee, die
 src/car.js      arcade car physics, capsule collision, car rendering
 src/player.js   on-foot movement and rendering
 src/bullet.js   bullet pool with swept wall collision
-src/hud.js      speedometer, health bars, minimap, debug text
+src/hud.js      cash/health/speed panels, minimap, WASTED overlay, debug text
 src/main.js     fixed-step loop, entity wiring, enter/exit glue
 ```
 
@@ -115,8 +118,16 @@ runs at the top of the next step. Doing it there (rather than mid-collision)
 means the blast is always measured from the position where the car died, so
 damage is deterministic. `M.blastDamage(d, radius, max)` falls off linearly,
 giving the full 30% at the centre and nothing at the rim; being inside the car
-is a flat 50% instead. Zero health calls `respawnPlayer()`, which teleports you
-to `world.hospitalSpawn` at full health.
+is a flat 50% instead.
+
+**Money and being wasted.** Hitting zero health calls `die()`, which sets
+`player.dead`, charges `MONEY_DEATH_COST` and shows the WASTED overlay. While
+`player.dead` the step loop zeroes the movement axis and ignores `E` and the
+fire button, so you keep watching the city with no control. Nothing respawns
+you until the overlay's button calls back into `respawnPlayer()`, which clears
+the flag, restores full health and teleports you to `world.hospitalSpawn`.
+`M.charge(balance, amount)` is a pure function so the "never below $0" rule is
+unit-tested in isolation rather than buried in the death path.
 
 **Rendering.** Ground tiles are drawn per frame with culling; buildings are
 slightly darker rectangles with a lighter roof, a fake "wall" band on the south
@@ -142,15 +153,17 @@ Everything lives in `src/config.js`. The ones worth touching first:
 | `EXPLOSION_RADIUS` | blast radius of a car that blows up |
 | `EXPLOSION_DMG_FRAC` | share of max health lost at the blast centre (0.30) |
 | `EXPLOSION_IN_CAR_FRAC` | share lost if the car you are in explodes (0.50) |
+| `MONEY_START` | cash you begin with (100) |
+| `MONEY_DEATH_COST` | cash lost each time you are wasted (25) |
 
 ## Tests
 
 ```bash
-# 93 assertions: collisions, car physics, world parsing, bullets, peds, blood,
-#                special buildings, blast damage, camera
+# 100 assertions: collisions, car physics, world parsing, bullets, peds, blood,
+#                 special buildings, blast damage, money, camera
 open tests.html          # or: python3 -m http.server 8000 → /tests.html
 
-# 48 assertions: boots the game and simulates real key/mouse input
+# 67 assertions: boots the game and simulates real key/mouse input
 open smoke.html
 ```
 

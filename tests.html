@@ -382,6 +382,20 @@
   CJ.Bullets.clear();
   CJ.Blood.clear();
 
+  // ---------------------------------------------------------------- money
+  assert('charge: deducts the amount', M.charge(100, 25) === 75, String(M.charge(100, 25)));
+  assert('charge: floors at zero', M.charge(10, 25) === 0, String(M.charge(10, 25)));
+  assert('charge: exactly zero stays zero', M.charge(25, 25) === 0);
+  assert('charge: never negative from zero', M.charge(0, 25) === 0);
+  assert('charge: negative amounts do not add money', M.charge(50, -10) === 50,
+    String(M.charge(50, -10)));
+  assert('charge: survives nonsense balances', M.charge(NaN, 25) === 0);
+  assert('charge: a long losing streak stays at zero', (function () {
+    var bal = 100;
+    for (var n = 0; n < 20; n++) bal = M.charge(bal, 25);
+    return bal === 0;
+  })());
+
   // ---------------------------------------------------------------- blast damage
   assert('blastDamage: point blank is the full amount',
     M.blastDamage(0, 200, 30) === 30, String(M.blastDamage(0, 200, 30)));

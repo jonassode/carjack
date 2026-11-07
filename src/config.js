@@ -34,6 +34,10 @@ CJ.CFG = {
   EXIT_OFFSET: 26,     // how far to step out from car centre
   EXIT_GRACE: 0.4,     // seconds of car<->player collision immunity after exit
 
+  // --- money --------------------------------------------------------------
+  MONEY_START: 100,           // dollars you begin with
+  MONEY_DEATH_COST: 25,       // taken off every time you are wasted
+
   // --- explosions / health ------------------------------------------------
   EXPLOSION_RADIUS: 190,      // px blast radius around a car that blows up
   EXPLOSION_DMG_FRAC: 0.30,   // share of max health lost right at the blast centre

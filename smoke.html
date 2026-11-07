@@ -26,10 +26,16 @@
   <span id="hud-speed"></span>
   <span id="hud-speed-unit"></span>
   <span id="hud-health-text"></span>
+  <span id="hud-money"></span>
   <div id="hud-health-fill"></div>
   <div id="hud-car-health"><div id="hud-car-health-fill"></div></div>
   <div id="hud-hint"></div>
   <div id="hud-paused"></div>
+  <div id="hud-wasted">
+    <h2>WASTED</h2>
+    <div id="hud-wasted-money"></div>
+    <button id="hud-respawn" type="button">Respawn</button>
+  </div>
 </div>
 
 <div id="out"></div>
@@ -345,27 +351,93 @@ function run() {
       s.player.hp.toFixed(1) + ' hp left');
     assert('the exploded car is gone', s.cars.indexOf(drivenCar) === -1);
 
-    // --- dying respawns you outside the hospital --------------------------
+    // --- money ------------------------------------------------------------
     tap('KeyR');
     tick(2);
     s = state();
-    var respawn = s.world.hospitalSpawn;
-    var bomb4 = s.cars[0];
-    bomb4.x = s.player.x;
-    bomb4.y = s.player.y;
-    bomb4.hp = 0;
-    s.player.hp = 1;                       // one point left: the blast finishes it
+    assert('you start with $100', s.money === 100, '$' + s.money);
+    assert('the HUD shows the cash', /\$100/.test(document.getElementById('hud-money').textContent),
+      document.getElementById('hud-money').textContent);
+
+    // --- dying: WASTED overlay, no respawn until you click ----------------
+    tap('KeyR');
+    tick(2);
+    s = state();
+    var hospitalSpawn = s.world.hospitalSpawn;
+    var deathSpot = { x: s.player.x, y: s.player.y };
+
+    window.CJGame.damage(1000);             // wipe the player out
     tick(1);
     s = state();
-    assert('running out of health respawns the player',
-      Math.abs(s.player.x - respawn.x) < 1 && Math.abs(s.player.y - respawn.y) < 1,
-      'at ' + s.player.x.toFixed(0) + ',' + s.player.y.toFixed(0) +
-      ' vs hospital ' + respawn.x.toFixed(0) + ',' + respawn.y.toFixed(0));
-    assert('the respawned player has full health',
-      s.player.hp === CJ.CFG.P_HP, s.player.hp + ' hp');
-    assert('the respawn point is walkable',
-      !s.world.isSolidAt(s.player.x, s.player.y, CJ.CFG.P_RADIUS - 1),
+    assert('running out of health puts you in the wasted state', s.dead === true);
+    assert('the WASTED overlay is shown', s.wastedVisible === true);
+    assert('dying costs $25', s.money === 75, '$' + s.money);
+    window.CJGame.render();
+    assert('the wasted overlay names the cost',
+      /25/.test(document.getElementById('hud-wasted-money').textContent),
+      document.getElementById('hud-wasted-money').textContent);
+
+    // The world keeps running, but you have no control and do not move.
+    hold('ArrowRight', 30);
+    holdMouse(10);
+    s = state();
+    assert('you cannot move while wasted',
+      Math.abs(s.player.x - deathSpot.x) < 0.01 && Math.abs(s.player.y - deathSpot.y) < 0.01,
+      s.player.x.toFixed(1) + ',' + s.player.y.toFixed(1));
+    assert('you cannot shoot while wasted', s.bulletsLive === 0);
+    assert('you are not respawned until you click',
+      Math.abs(s.player.x - hospitalSpawn.x) > 1 || Math.abs(s.player.y - hospitalSpawn.y) > 1);
+
+    // --- clicking the button respawns you at the hospital -----------------
+    document.getElementById('hud-respawn').click();
+    tick(1);
+    s = state();
+    assert('clicking respawn clears the wasted state', s.dead === false);
+    assert('clicking respawn hides the overlay', s.wastedVisible === false);
+    assert('you respawn outside the hospital',
+      Math.abs(s.player.x - hospitalSpawn.x) < 1 && Math.abs(s.player.y - hospitalSpawn.y) < 1,
       s.player.x.toFixed(0) + ',' + s.player.y.toFixed(0));
+    assert('you respawn at full health', s.player.hp === CJ.CFG.P_HP, s.player.hp + ' hp');
+    assert('the respawn point is walkable',
+      !s.world.isSolidAt(s.player.x, s.player.y, CJ.CFG.P_RADIUS - 1));
+    assert('respawned money is unchanged', s.money === 75, '$' + s.money);
+    hold('ArrowRight', 20);
+    s = state();
+    assert('you have control again after respawning', s.player.x !== hospitalSpawn.x);
+
+    // --- you can never go below $0 ---------------------------------------
+    tap('KeyR');
+    tick(2);
+    s = state();
+    s.player.money = 10;                    // less than the death cost
+    window.CJGame.damage(1000);
+    tick(1);
+    s = state();
+    assert('the wallet is floored at $0', s.money === 0, '$' + s.money);
+
+    tap('KeyR');
+    tick(2);
+    s = state();
+    s.player.money = 0;
+    window.CJGame.damage(1000);
+    tick(1);
+    s = state();
+    assert('dying broke does not go negative', s.money === 0, '$' + s.money);
+    document.getElementById('hud-respawn').click();
+    tick(1);
+    assert('you can still respawn with no money', state().dead === false);
+
+    // --- R clears the overlay too ----------------------------------------
+    tap('KeyR');
+    tick(2);
+    window.CJGame.damage(1000);
+    tick(1);
+    assert('reset while wasted works', state().wastedVisible === true);
+    tap('KeyR');
+    tick(2);
+    s = state();
+    assert('R clears the wasted state', s.dead === false && s.wastedVisible === false);
+    assert('R restores your starting cash', s.money === 100, '$' + s.money);
 
     // --- rendering must not throw ----------------------------------------
     var rendered = true;

@@ -46,6 +46,7 @@ window.CJ = window.CJ || {};
     graceCar = null;
     exitGrace = 0;
     paused = false;
+    CJ.HUD.hideWasted();
 
     cars = world.carSpawns.map(function (spawn, i) {
       return new CJ.Car({
@@ -71,6 +72,7 @@ window.CJ = window.CJ || {};
     CJ.Peds.init(world, CJ.MAP_CITY);
     CJ.Input.init(canvas);
     CJ.HUD.init();
+    CJ.HUD.onRespawn(respawnPlayer);
     resize();
 
     window.addEventListener('resize', resize);
@@ -182,17 +184,42 @@ window.CJ = window.CJ || {};
 
   // ---------------------------------------------------------------- health
   function damagePlayer(amount) {
-    if (!(amount > 0) || player.hp <= 0) return 0;
+    if (!(amount > 0) || player.dead || player.hp <= 0) return 0;
     var before = player.hp;
     player.hp = Math.max(0, player.hp - amount);
     flash = Math.min(1, flash + 0.3 + amount / (C.P_HP * 2));
     cam.shake(Math.min(10, 2 + amount * 0.25));
-    if (player.hp <= 0) respawnPlayer();
+    if (player.hp <= 0) die();
     return before - player.hp;
   }
 
-  // Out of health: you wake up on the pavement outside the hospital, patched up.
+  // Wasted: the run ends here until the player clicks respawn. Dying costs money,
+  // and the wallet is floored at zero.
+  function die() {
+    if (player.dead) return;
+
+    player.dead = true;
+    player.hp = 0;
+    player.vx = 0;
+    player.vy = 0;
+
+    if (player.driving) {
+      player.driving.driver = null;
+      player.driving = null;
+    }
+
+    player.money = M.charge(player.money, C.MONEY_DEATH_COST);
+
+    flash = 1;
+    cam.shake(9);
+    CJ.HUD.showWasted(player.money, C.MONEY_DEATH_COST);
+  }
+
+  // Called by the WASTED overlay's button: you wake up on the pavement outside
+  // the hospital, patched up.
   function respawnPlayer() {
+    if (!player.dead) return;
+
     var spot = world.hospitalSpawn;
 
     if (player.driving) {
@@ -205,8 +232,10 @@ window.CJ = window.CJ || {};
     player.vx = 0;
     player.vy = 0;
     player.hp = C.P_HP;
+    player.dead = false;
     player.collide(world);
 
+    CJ.HUD.hideWasted();
     flash = 1;
     cam.setTarget(player, true);
     cam.shake(6);
@@ -406,7 +435,7 @@ window.CJ = window.CJ || {};
     explodeDeadCars();
 
     // Enter / leave the nearest car.
-    if (I.pressed('KeyE')) {
+    if (!player.dead && I.pressed('KeyE')) {
       if (player.driving) exitCar();
       else {
         var car = nearestCar();
@@ -415,14 +444,17 @@ window.CJ = window.CJ || {};
     }
 
     // Aim at the mouse whenever we are on foot.
-    if (!player.driving && I.mouse.moved) {
+    if (!player.dead && !player.driving && I.mouse.moved) {
       var mw = cam.screenToWorld(I.mouse.sx, I.mouse.sy);
       player.aim = Math.atan2(mw.y - player.y, mw.x - player.x);
     }
 
     var axis = I.axis();
 
-    if (player.driving) {
+    if (player.dead) {
+      // Wasted: no control at all, but the city keeps moving around you.
+      axis = { x: 0, y: 0 };
+    } else if (player.driving) {
       var driven = player.driving;
       driven.update(dt, I.driving());
       var impact = driven.integrate(dt, world);
@@ -587,6 +619,8 @@ window.CJ = window.CJ || {};
     reset: reset,
     step: step,
     render: render,
+    respawn: respawnPlayer,
+    damage: damagePlayer,
     getState: function () {
       return {
         player: player,
@@ -598,6 +632,10 @@ window.CJ = window.CJ || {};
         particles: particles,
         explosions: explosions,
         bulletsLive: CJ.Bullets.liveCount,
+        money: player.money,
+        dead: player.dead,
+        wastedVisible: !!(document.getElementById('hud-wasted') &&
+          document.getElementById('hud-wasted').style.display === 'flex'),
         peds: CJ.Peds.list,
         pedsAlive: CJ.Peds.aliveCount,
         kills: CJ.Peds.kills,

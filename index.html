@@ -138,6 +138,91 @@
     color: rgba(255, 255, 255, 0.72);
     background: rgba(6, 8, 11, 0.45);
   }
+
+  .money-row {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    margin-bottom: 2px;
+  }
+  #hud-money {
+    font-size: 18px;
+    font-weight: 700;
+    color: #8ff0a4;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- WASTED overlay ---- */
+  #hud-wasted {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: rgba(10, 4, 6, 0.72);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    pointer-events: auto;
+    animation: wasted-in 0.35s ease-out;
+  }
+  @keyframes wasted-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  #hud-wasted h2 {
+    margin: 0;
+    font-size: clamp(44px, 11vw, 104px);
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    line-height: 1;
+    color: #ff4a38;
+    text-shadow:
+      0 0 2px #2a0402,
+      0 2px 0 #6d0f08,
+      0 4px 0 #3d0704,
+      0 0 30px rgba(255, 74, 56, 0.75),
+      0 12px 44px rgba(0, 0, 0, 0.75);
+    transform: rotate(-2deg);
+  }
+
+  #hud-wasted-money {
+    font-size: 13px;
+    letter-spacing: 0.16em;
+    color: #ffb9ae;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+    font-variant-numeric: tabular-nums;
+  }
+
+  #hud-respawn {
+    margin-top: 8px;
+    padding: 11px 30px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: #12161c;
+    background: linear-gradient(180deg, #f2f5f8, #c9d2dc);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: 8px;
+    cursor: pointer;
+    pointer-events: auto;
+    box-shadow: 0 6px 0 rgba(0, 0, 0, 0.35), 0 10px 24px rgba(0, 0, 0, 0.45);
+    transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.15s;
+  }
+  #hud-respawn:hover { background: linear-gradient(180deg, #fff, #dbe4ee); }
+  #hud-respawn:active {
+    transform: translateY(3px);
+    box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35), 0 6px 14px rgba(0, 0, 0, 0.45);
+  }
+  #hud-respawn:focus-visible {
+    outline: 2px solid #ffd15c;
+    outline-offset: 3px;
+  }
 </style>
 </head>
 <body>
@@ -146,6 +231,8 @@
 <div id="hud">
   <div class="panel" id="panel-status">
     <span class="mode foot" id="hud-mode">ON FOOT</span>
+    <div class="lbl">Cash</div>
+    <div class="money-row"><span id="hud-money">$100</span></div>
     <div class="lbl">Speed</div>
     <div class="speed-row">
       <span id="hud-speed">0</span>
@@ -164,6 +251,12 @@
   </div>
 
   <div id="hud-paused">PAUSED</div>
+
+  <div id="hud-wasted">
+    <h2>WASTED</h2>
+    <div id="hud-wasted-money">-$25</div>
+    <button id="hud-respawn" type="button">Respawn at hospital</button>
+  </div>
 </div>
 
 <!-- Classic scripts, dependency order, no build step. -->

@@ -16,6 +16,10 @@ CJ.HUD = (function () {
     els.speedUnit = document.getElementById('hud-speed-unit');
     els.healthFill = document.getElementById('hud-health-fill');
     els.healthText = document.getElementById('hud-health-text');
+    els.money = document.getElementById('hud-money');
+    els.wasted = document.getElementById('hud-wasted');
+    els.wastedMoney = document.getElementById('hud-wasted-money');
+    els.respawnBtn = document.getElementById('hud-respawn');
     els.carHealth = document.getElementById('hud-car-health');
     els.carHealthFill = document.getElementById('hud-car-health-fill');
     els.hint = document.getElementById('hud-hint');
@@ -41,6 +45,7 @@ CJ.HUD = (function () {
             : 'linear-gradient(90deg, #c0392b, #ff6b5a)');
     }
     if (els.healthText) setText(els.healthText, String(Math.ceil(Math.max(0, s.player.hp))));
+    if (els.money) setText(els.money, '$' + Math.round(Math.max(0, s.player.money)));
 
     if (els.carHealth) els.carHealth.style.display = driving ? 'block' : 'none';
     if (driving && els.carHealthFill) {
@@ -156,5 +161,38 @@ CJ.HUD = (function () {
     ctx.restore();
   }
 
-  return { init: init, update: update, draw: draw };
+  var respawnCb = null;
+
+  // main.js hands us the respawn routine; the overlay button just calls it.
+  function onRespawn(fn) {
+    respawnCb = fn;
+    if (!els.respawnBtn || els.respawnBtn._wired) return;
+    els.respawnBtn._wired = true;
+    els.respawnBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      if (respawnCb) respawnCb();
+    });
+  }
+
+  function showWasted(moneyLeft, cost) {
+    if (!els.wasted) return;
+    if (els.wastedMoney) {
+      setText(els.wastedMoney, '-' + '$' + cost + '   ·   $' + Math.round(moneyLeft) + ' left');
+    }
+    els.wasted.style.display = 'flex';
+    if (els.respawnBtn) els.respawnBtn.focus();
+  }
+
+  function hideWasted() {
+    if (els.wasted) els.wasted.style.display = 'none';
+  }
+
+  return {
+    init: init,
+    update: update,
+    draw: draw,
+    onRespawn: onRespawn,
+    showWasted: showWasted,
+    hideWasted: hideWasted
+  };
 })();

@@ -30,6 +30,14 @@ CJ.M = (function () {
     return current + (target - current) * (1 - Math.exp(-rate * dt));
   }
 
+  // Take `amount` off `balance`, never going below zero. Pure so the "you can
+  // never be in debt" rule is testable in isolation.
+  function charge(balance, amount) {
+    if (!isFinite(balance)) return 0;
+    if (!(amount > 0)) return Math.max(0, balance);
+    return Math.max(0, balance - amount);
+  }
+
   // Damage from an explosion: full `maxAmount` at the centre, falling off
   // linearly to zero at `radius`. Negative or NaN distances clamp safely.
   function blastDamage(dist, radius, maxAmount) {
@@ -158,6 +166,7 @@ CJ.M = (function () {
     rot: rot,
     smooth: smooth,
     blastDamage: blastDamage,
+    charge: charge,
     hash2: hash2,
     circleVsAABB: circleVsAABB,
     segVsAABB: segVsAABB,
