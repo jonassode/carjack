@@ -2,9 +2,10 @@
 //
 // A little depot building ('C' on the map) keeps the streets tidy. A blood splat
 // that has been lying there for CLEAN_DELAY seconds with nobody washing it
-// summons a cleaner truck: it rolls out of the depot, follows the road grid to
-// the mess, stops, scrubs every decal within CLEANER_WASH_RADIUS away, then
-// drives home. That drains the decal pool so it never just fills to SPLAT_MAX.
+// summons the depot's one sweeper truck: it rolls out, follows the road grid to
+// the mess, cleans the blood by driving right over it (scrubbing any decal
+// within CLEANER_SWEEP_RADIUS of its chassis as it goes), then heads home. That
+// drains the decal pool so it never just fills to SPLAT_MAX.
 window.CJ = window.CJ || {};
 
 CJ.Cleaner = (function () {
@@ -122,9 +123,9 @@ CJ.Cleaner = (function () {
       repath: 0,
       stuck: 0,
       reverse: 0,
-      state: 'out',                    // out | wash | home
-      wash: 0,
-      life: 0
+      state: 'out',                    // out | home
+      spray: 0,
+      targetTime: 0
     };
     units.push(u);
     carsRef.push(truck);
@@ -166,22 +167,39 @@ CJ.Cleaner = (function () {
       u.repath = C.CLEANER_REPATH;
     }
 
+    var dist = M.dist(car.x, car.y, tx, ty);
     var aimX = tx;
     var aimY = ty;
     var path = u.path;
-    if (path && path.length) {
+    // Once close, aim straight at the spot so the truck mounts the kerb and
+    // drives over the decal instead of stopping at the nearest road tile.
+    if (dist >= C.CLEANER_REACH && path && path.length) {
       while (u.waypoint < path.length - 1 &&
              M.dist(car.x, car.y, path[u.waypoint].x, path[u.waypoint].y) < 34) {
         u.waypoint++;
       }
-      aimX = path[u.waypoint].x;
-      aimY = path[u.waypoint].y;
+      // Aim a little way down the road so corners are anticipated instead of
+      // taken at the last moment (which made the sweeper overshoot and orbit).
+      var look = u.waypoint;
+      for (var j = u.waypoint; j < path.length; j++) {
+        if (M.dist(car.x, car.y, path[j].x, path[j].y) > C.CLEANER_LOOKAHEAD) break;
+        look = j;
+      }
+      aimX = path[look].x;
+      aimY = path[look].y;
     }
 
     var diff = wrapAngle(Math.atan2(aimY - car.y, aimX - car.x) - car.heading);
     var steer = M.clamp(diff * 2.4, -1, 1);
     var throttle = 1;
-    if (Math.abs(diff) > 0.9) throttle = 0.35;   // ease into tight corners
+    if (Math.abs(diff) > 0.6) throttle = 0.5;    // ease into corners
+    if (Math.abs(diff) > 1.0) throttle = 0.3;
+    if (dist < C.CLEANER_REACH) {
+      // Creep the last stretch: slow enough that the steering can curl onto the
+      // decal and roll right over it instead of just orbiting it.
+      throttle = car.speed > 95 ? -1 : 0.4;
+      steer = M.clamp(diff * 3, -1, 1);
+    }
 
     if (u.reverse > 0) {
       u.reverse -= dt;
@@ -218,44 +236,54 @@ CJ.Cleaner = (function () {
     }
 
     var C = CJ.CFG;
-    u.life += dt;
     car.brush = (car.brush + dt * 13) % TAU;
 
-    if (u.state === 'out') {
-      // A truck that cannot reach its mess gives up and heads home, so a stray
-      // unreachable decal cannot pin the whole fleet forever.
-      if (u.life > C.CLEANER_GIVEUP) {
+    // The sweeper cleans by rolling over the blood: scrub any decal within the
+    // brush's reach, and puff water out front for a moment whenever it does.
+    if (CJ.Blood.cleanNear(car.x, car.y, C.CLEANER_SWEEP_RADIUS) > 0) u.spray = 0.35;
+    if (u.spray > 0) u.spray -= dt;
+    car.spraying = u.spray > 0;
+
+    if (u.state === 'home') {
+      driveTo(u, dt, u.homeX, u.homeY);
+      if (M.dist(car.x, car.y, u.homeX, u.homeY) < C.CLEANER_REACH) retire(u);
+      return;
+    }
+
+    // Out on the streets: chase the oldest decal that has waited long enough.
+    // When the one we are after is gone (driven over, or dropped by the pool
+    // cap) take the next; when there are none left, head home.
+    if (!u.target || CJ.Blood.splats.indexOf(u.target) === -1) {
+      var next = waitingSplat();
+      if (!next) {
         u.state = 'home';
         u.path = null;
         u.waypoint = 0;
         u.repath = 0;
         return;
       }
-      driveTo(u, dt, u.tx, u.ty);
-      if (M.dist(car.x, car.y, u.tx, u.ty) < C.CLEANER_REACH) {
-        u.state = 'wash';
-        u.wash = C.CLEANER_WASH_TIME;
-        car.vx = 0;
-        car.vy = 0;
-      }
-    } else if (u.state === 'wash') {
-      // Park up and scrub: hold still while the brush and water run.
-      car.update(dt, { throttle: 0, steer: 0 });
-      car.integrate(dt, world);
-      car.spraying = true;
-      u.wash -= dt;
-      if (u.wash <= 0) {
-        CJ.Blood.cleanNear(u.tx, u.ty, C.CLEANER_WASH_RADIUS);
-        car.spraying = false;
-        u.state = 'home';
-        u.path = null;
-        u.waypoint = 0;
-        u.repath = 0;
-      }
-    } else {
-      driveTo(u, dt, u.homeX, u.homeY);
-      if (M.dist(car.x, car.y, u.homeX, u.homeY) < C.CLEANER_REACH) retire(u);
+      u.target = next;
+      u.tx = next.x;
+      u.ty = next.y;
+      u.targetTime = 0;
+      u.path = null;
+      u.waypoint = 0;
+      u.repath = 0;
     }
+
+    // A sweeper that cannot reach one mess gives up on it and goes home, so a
+    // stray unreachable decal cannot pin it forever.
+    u.targetTime += dt;
+    if (u.targetTime > C.CLEANER_GIVEUP) {
+      u.target = null;
+      u.state = 'home';
+      u.path = null;
+      u.waypoint = 0;
+      u.repath = 0;
+      return;
+    }
+
+    driveTo(u, dt, u.tx, u.ty);
   }
 
   // ------------------------------------------------------------------ API

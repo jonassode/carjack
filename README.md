@@ -15,9 +15,10 @@ flat geometric shapes — no sprites, no images, no assets at all.
   people over and shooting them raises it, and from the second shield on the
   station sends **one squad car per filled badge** — five badges means five cars
   — which chase and ram you, then bail out to shoot and drag you out of the car
-- A little **street-cleaner depot** building sends out a sweeper truck twenty
-  seconds after any blood appears; it drives over, scrubs the mess away and
-  parks up again, so the streets (and the decal pool) never stay messy for long
+- A little **street-cleaner depot** building sends out a lone, slow sweeper truck
+  twenty seconds after any blood appears; it drives along the roads and cleans
+  the mess up by rolling right over it, then parks up again — so the streets
+  (and the decal pool) never stay messy for long
 - Cars explode when their chassis is destroyed, hurting you by proximity
   (up to 30%) or by half your health if you are still inside
 - Run out of health and you are **WASTED** — you lose $25 and must click the
@@ -171,17 +172,19 @@ contact the BUSTED overlay appears: the meter empties, the squad car is removed
 and the bail is charged. The heat keeps decaying during a chase, so a clean
 getaway eventually makes them stand down.
 
-**Street cleaners.** `CJ.Cleaner` is the tidy-up crew. Every decal carries an
-`age` (bumped once a step by `CJ.Blood.update`), and once one passes
-`CLEAN_DELAY` — twenty seconds with nobody washing it — the depot sends a truck.
-Like a squad car the sweeper routes over the road tiles (the same breadth-first
-search the police use), so it can reach a splat that is sitting on a pavement,
-and it retraces that route home. On arrival it parks, spins its brush and sprays
-for `CLEANER_WASH_TIME`, then `CJ.Blood.cleanNear` wipes every decal inside
-`CLEANER_WASH_RADIUS` — so one truck clears a whole cluster and the pool drains
-long before it could ever reach `SPLAT_MAX`. At most `CLEANER_MAX_UNITS` sweepers
-are out at once, so the depot cannot flood the streets, and a truck that gets
-wedged gives up after `CLEANER_GIVEUP` and goes home empty-handed.
+**Street cleaners.** `CJ.Cleaner` is the tidy-up crew, and there is only ever
+one of it (`CLEANER_MAX_UNITS`). Every decal carries an `age` (bumped once a step
+by `CJ.Blood.update`), and once one passes `CLEAN_DELAY` — twenty seconds with
+nobody washing it — the depot sends the sweeper. Like a squad car it routes over
+the road tiles (the same breadth-first search the police use), so it can reach a
+decal on a pavement, and it retraces that route home. It cleans by *driving over*
+the blood: each step it scrubs any decal within `CLEANER_SWEEP_RADIUS` of its
+chassis and puffs water while it does, so it wipes a whole smear in one slow pass
+— and any decal it happens to cross on the way is cleaned too. When its target is
+gone it takes the next oldest, and once the streets are clean it drives back to
+the depot and parks. It is slower than your car (`CLEANER_SPEED_MULT`), and a
+sweeper that gets wedged chasing one mess gives up after `CLEANER_GIVEUP` and
+goes home — so the decal pool drains well before it could reach `SPLAT_MAX`.
 
 **Rendering.** Ground tiles are drawn per frame with culling; buildings are
 slightly darker rectangles with a lighter roof, a fake "wall" band on the south
@@ -220,16 +223,16 @@ Everything lives in `src/config.js`. The ones worth touching first:
 | `POLICE_DEPLOY_RANGE` | how close it stops before the officers get out |
 | `COP_SPEED`, `COP_FIRE_CD`, `POLICE_BULLET_DMG` | officers on foot |
 | `POLICE_BUST_TIME` | seconds of grabbing before you are busted |
-| `CLEAN_DELAY` | seconds a blood splat waits before a cleaner is sent (20) |
-| `CLEANER_MAX_UNITS` | most sweeper trucks out at once |
-| `CLEANER_WASH_RADIUS` | how big a patch one sweeper scrubs clean |
+| `CLEAN_DELAY` | seconds a blood splat waits before the sweeper is sent (20) |
+| `CLEANER_MAX_UNITS` | how many sweepers there are (1) |
+| `CLEANER_SWEEP_RADIUS` | how wide a swathe one pass of the brush cleans |
 | `CLEANER_SPEED_MULT` | how much slower the sweeper is than your car |
-| `CLEANER_GIVEUP` | seconds before a wedged truck heads home |
+| `CLEANER_GIVEUP` | seconds before a wedged sweeper gives up and heads home |
 
 ## Tests
 
 ```bash
-# 165 assertions: collisions, car physics, parking, headlights, world parsing,
+# 166 assertions: collisions, car physics, parking, headlights, world parsing,
 #                 bullets, cops, peds, blood, special buildings, blast damage,
 #                 money, the alert meter, the police fleet, the cleaner depot,
 #                 camera

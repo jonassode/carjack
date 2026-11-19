@@ -306,10 +306,10 @@ CJ.Car = (function () {
         ctx.globalAlpha = 0.5;
         ctx.fillStyle = CL.water;
         ctx.beginPath();
-        ctx.moveTo(L / 2, -W * 0.7);
-        ctx.lineTo(L / 2 + 72, -30);
-        ctx.lineTo(L / 2 + 72, 30);
-        ctx.lineTo(L / 2, W * 0.7);
+        ctx.moveTo(L / 2, -W * 0.6);
+        ctx.lineTo(L / 2 + 52, -22);
+        ctx.lineTo(L / 2 + 52, 22);
+        ctx.lineTo(L / 2, W * 0.6);
         ctx.closePath();
         ctx.fill();
         ctx.globalAlpha = 1;

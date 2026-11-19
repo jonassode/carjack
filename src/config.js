@@ -81,21 +81,22 @@ CJ.CFG = {
 
   // --- street cleaners (blood decals) -------------------------------------
   // A small depot building ('C' on the map) keeps the streets tidy. A splat
-  // that sits for CLEAN_DELAY seconds with nobody washing it summons a cleaner
-  // truck: it drives out over the road grid, scrubs every decal within
-  // CLEANER_WASH_RADIUS, then heads home. That drains the decal pool long before
-  // it can ever fill up to SPLAT_MAX.
-  CLEAN_DELAY: 20,            // seconds a splat is left before a truck is sent
-  CLEANER_MAX_UNITS: 3,       // most trucks out at once
+  // that sits for CLEAN_DELAY seconds with nobody washing it summons the depot's
+  // lone sweeper truck. It drives out over the road grid, cleans the blood by
+  // literally rolling over it (scrubbing any decal within CLEANER_SWEEP_RADIUS),
+  // then heads home. That drains the decal pool long before it can ever fill up
+  // to SPLAT_MAX.
+  CLEAN_DELAY: 20,            // seconds a splat is left before the sweeper is sent
+  CLEANER_MAX_UNITS: 1,       // a single sweeper works the whole city
   CLEANER_CAR_HP: 9999,       // a service truck; scrapes never write it off
-  CLEANER_SPEED_MULT: 0.80,   // slower than your car
-  CLEANER_ACCEL_MULT: 0.9,
+  CLEANER_SPEED_MULT: 0.45,   // noticeably slower than your car
+  CLEANER_ACCEL_MULT: 0.7,
   CLEANER_REPATH: 0.9,        // seconds between road routes
-  CLEANER_REACH: 100,         // close enough to a mess to start washing
-  CLEANER_WASH_TIME: 1.8,     // seconds spent scrubbing
-  CLEANER_WASH_RADIUS: 120,   // splats wiped within this of the truck
-  CLEANER_DEPART_DELAY: 0.8,  // gap between trucks rolling out
-  CLEANER_GIVEUP: 30,         // seconds before a wedged truck heads home
+  CLEANER_REACH: 90,          // inside this it aims straight at the decal
+  CLEANER_LOOKAHEAD: 130,     // px of road to aim at (anticipates corners)
+  CLEANER_SWEEP_RADIUS: 46,   // blood it drives over gets scrubbed away
+  CLEANER_DEPART_DELAY: 0.8,  // seconds before the sweeper rolls out
+  CLEANER_GIVEUP: 30,         // seconds before a wedged sweeper heads home
 
   // --- explosions / health ------------------------------------------------
   EXPLOSION_RADIUS: 190,      // px blast radius around a car that blows up
