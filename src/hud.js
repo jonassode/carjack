@@ -5,9 +5,24 @@ CJ.HUD = (function () {
   'use strict';
 
   var els = {};
+  var badges = [];
 
   function setText(el, text) {
     if (el && el.textContent !== text) el.textContent = text;
+  }
+
+  // The five shields are built once from config so markup and tuning agree.
+  function buildBadges() {
+    badges = [];
+    if (!els.alertBadges) return;
+    els.alertBadges.innerHTML = '';
+    for (var i = 0; i < CJ.CFG.ALERT_BADGES; i++) {
+      var b = document.createElement('span');
+      b.className = 'badge';
+      b.style.setProperty('--fill', '0%');
+      els.alertBadges.appendChild(b);
+      badges.push(b);
+    }
   }
 
   function init() {
@@ -17,13 +32,19 @@ CJ.HUD = (function () {
     els.healthFill = document.getElementById('hud-health-fill');
     els.healthText = document.getElementById('hud-health-text');
     els.money = document.getElementById('hud-money');
+    els.alertText = document.getElementById('hud-alert-text');
+    els.alertBadges = document.getElementById('hud-alert-badges');
     els.wasted = document.getElementById('hud-wasted');
     els.wastedMoney = document.getElementById('hud-wasted-money');
     els.respawnBtn = document.getElementById('hud-respawn');
+    els.busted = document.getElementById('hud-busted');
+    els.bustedMoney = document.getElementById('hud-busted-money');
+    els.bustedBtn = document.getElementById('hud-busted-respawn');
     els.carHealth = document.getElementById('hud-car-health');
     els.carHealthFill = document.getElementById('hud-car-health-fill');
     els.hint = document.getElementById('hud-hint');
     els.paused = document.getElementById('hud-paused');
+    buildBadges();
   }
 
   function update(s) {
@@ -46,6 +67,24 @@ CJ.HUD = (function () {
     }
     if (els.healthText) setText(els.healthText, String(Math.ceil(Math.max(0, s.player.hp))));
     if (els.money) setText(els.money, '$' + Math.round(Math.max(0, s.player.money)));
+
+    // --- alert meter: five shields, ALERT_MAX / ALERT_BADGES points each ----
+    var meter = s.alert;
+    if (els.alertText) {
+      setText(els.alertText, String(Math.round(meter ? meter.value : 0)));
+    }
+    for (var b = 0; b < badges.length; b++) {
+      var fill = meter ? meter.fill(b) : 0;
+      var pct = (fill * 100).toFixed(0) + '%';
+      if (badges[b]._fill !== pct) {
+        badges[b].style.setProperty('--fill', pct);
+        badges[b]._fill = pct;
+      }
+      var cls = 'badge' +
+        (fill >= 0.999 ? ' on' : '') +
+        (s.chase ? ' alerted' : '');
+      if (badges[b].className !== cls) badges[b].className = cls;
+    }
 
     if (els.carHealth) els.carHealth.style.display = driving ? 'block' : 'none';
     if (driving && els.carHealthFill) {
@@ -96,10 +135,11 @@ CJ.HUD = (function () {
       view.h * sy
     );
 
-    // Cars.
+    // Cars: green for yours, blue for the police, yellow for parked ones.
     for (var i = 0; i < s.cars.length; i++) {
       var car = s.cars[i];
-      ctx.fillStyle = car === s.player.driving ? '#7ee081' : '#e8c04a';
+      ctx.fillStyle = car.police ? '#5b9bff'
+        : (car === s.player.driving ? '#7ee081' : '#e8c04a');
       ctx.fillRect(ox + car.x * sx - 2, oy + car.y * sy - 2, 4, 4);
     }
 
@@ -108,6 +148,15 @@ CJ.HUD = (function () {
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
       ctx.arc(ox + s.player.x * sx, oy + s.player.y * sy, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Officers on foot, so you can see them closing in on the minimap.
+    var cops = CJ.Police.targets();
+    for (var ci = 0; ci < cops.length; ci++) {
+      ctx.fillStyle = '#9cc6ff';
+      ctx.beginPath();
+      ctx.arc(ox + cops[ci].x * sx, oy + cops[ci].y * sy, 2.2, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -144,6 +193,11 @@ CJ.HUD = (function () {
       'hp ' + Math.ceil(s.player.hp) + '/' + CJ.CFG.P_HP +
         (s.player.driving ? '  car ' + Math.max(0, Math.ceil(s.player.driving.hp)) : ''),
       'peds ' + CJ.Peds.aliveCount + '/' + CJ.Peds.list.length + '  kills ' + CJ.Peds.kills,
+      'alert ' + Math.round(CJ.Police.alert) + '  ' +
+        (CJ.Police.active
+          ? 'POLICE ' + CJ.Police.snapshot().cars + ' cars / ' +
+            CJ.Police.snapshot().afoot + ' afoot'
+          : 'police idle'),
       'splats ' + CJ.Blood.count,
       'loops ' + CJ.Peds.loops.length,
       'solids ' + s.world.solids.length,
@@ -162,20 +216,31 @@ CJ.HUD = (function () {
   }
 
   var respawnCb = null;
+  var bustRespawnCb = null;
 
-  // main.js hands us the respawn routine; the overlay button just calls it.
+  // main.js hands us the respawn routines; the overlay buttons just call them.
+  function wire(btn, set) {
+    if (!btn || btn._wired) return;
+    btn._wired = true;
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      if (set) set();
+    });
+  }
+
   function onRespawn(fn) {
     respawnCb = fn;
-    if (!els.respawnBtn || els.respawnBtn._wired) return;
-    els.respawnBtn._wired = true;
-    els.respawnBtn.addEventListener('click', function (e) {
-      e.preventDefault();
-      if (respawnCb) respawnCb();
-    });
+    wire(els.respawnBtn, function () { if (respawnCb) respawnCb(); });
+  }
+
+  function onBustRespawn(fn) {
+    bustRespawnCb = fn;
+    wire(els.bustedBtn, function () { if (bustRespawnCb) bustRespawnCb(); });
   }
 
   function showWasted(moneyLeft, cost) {
     if (!els.wasted) return;
+    hideBusted();
     if (els.wastedMoney) {
       setText(els.wastedMoney, '-' + '$' + cost + '   ·   $' + Math.round(moneyLeft) + ' left');
     }
@@ -187,12 +252,29 @@ CJ.HUD = (function () {
     if (els.wasted) els.wasted.style.display = 'none';
   }
 
+  function showBusted(moneyLeft, cost) {
+    if (!els.busted) return;
+    hideWasted();
+    if (els.bustedMoney) {
+      setText(els.bustedMoney, '-' + '$' + cost + '   ·   $' + Math.round(moneyLeft) + ' left');
+    }
+    els.busted.style.display = 'flex';
+    if (els.bustedBtn) els.bustedBtn.focus();
+  }
+
+  function hideBusted() {
+    if (els.busted) els.busted.style.display = 'none';
+  }
+
   return {
     init: init,
     update: update,
     draw: draw,
     onRespawn: onRespawn,
+    onBustRespawn: onBustRespawn,
     showWasted: showWasted,
-    hideWasted: hideWasted
+    hideWasted: hideWasted,
+    showBusted: showBusted,
+    hideBusted: hideBusted
   };
 })();

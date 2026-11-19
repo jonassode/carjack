@@ -30,10 +30,11 @@ CJ.Bullets = (function () {
   }
 
   // Moves every bullet, resolves wall hits with a segment test, then hits against
-// cars and pedestrians with circle tests.
-  //   onHitCar(car, x, y) / onHitPed(ped, x, y) are optional damage callbacks.
-  //   `peds` and `onHitPed` are optional so older callers keep working.
-  function update(dt, world, cars, onHitCar, peds, onHitPed) {
+  // pedestrians, cars and (optionally) the player on foot with circle tests.
+  //   onHitCar(car, x, y, owner) / onHitPed(ped, x, y, owner) /
+  //   onHitPlayer(x, y, owner) are optional damage callbacks.
+  //   Everything after `onHitCar` is optional so older callers keep working.
+  function update(dt, world, cars, onHitCar, peds, onHitPed, player, onHitPlayer) {
     var C = CJ.CFG;
     var near, j, k, t, best, nx, ny, car, res, hit;
 
@@ -69,11 +70,13 @@ CJ.Bullets = (function () {
         for (k = 0; k < peds.length; k++) {
           var ped = peds[k];
           if (!ped || ped.dead) continue;
+          if (ped === b.owner) continue;        // never shoot yourself
+          if (ped.isCop && b.owner && b.owner.isCop) continue;  // no friendly fire
           res = M.circleVsCircle(nx, ny, C.B_RADIUS + 1.5, ped.x, ped.y, ped.r || 6);
           if (res) {
             b.active = false;
             hit = true;
-            if (onHitPed) onHitPed(ped, nx, ny);
+            if (onHitPed) onHitPed(ped, nx, ny, b.owner);
             break;
           }
         }
@@ -87,11 +90,23 @@ CJ.Bullets = (function () {
         res = M.circleVsCircle(nx, ny, C.B_RADIUS + 1, car.x, car.y, C.CAR_LEN * 0.42);
         if (res) {
           b.active = false;
-          if (onHitCar) onHitCar(car, nx, ny);
+          if (onHitCar) onHitCar(car, nx, ny, b.owner);
           break;
         }
       }
       if (!b.active) continue;
+
+      // --- the player on foot (a player in a car is hit through the car) --
+      if (player && player !== b.owner && !player.driving && !player.dead &&
+          !player.busted) {
+        res = M.circleVsCircle(nx, ny, C.B_RADIUS + 1,
+                               player.x, player.y, player.radius || 9);
+        if (res) {
+          b.active = false;
+          if (onHitPlayer) onHitPlayer(nx, ny, b.owner);
+          continue;
+        }
+      }
 
       b.x = nx;
       b.y = ny;

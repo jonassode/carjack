@@ -27,6 +27,8 @@
   <span id="hud-speed-unit"></span>
   <span id="hud-health-text"></span>
   <span id="hud-money"></span>
+  <span id="hud-alert-text"></span>
+  <div id="hud-alert-badges"></div>
   <div id="hud-health-fill"></div>
   <div id="hud-car-health"><div id="hud-car-health-fill"></div></div>
   <div id="hud-hint"></div>
@@ -36,6 +38,11 @@
     <div id="hud-wasted-money"></div>
     <button id="hud-respawn" type="button">Respawn</button>
   </div>
+  <div id="hud-busted">
+    <h2>BUSTED</h2>
+    <div id="hud-busted-money"></div>
+    <button id="hud-busted-respawn" type="button">Respawn</button>
+  </div>
 </div>
 
 <div id="out"></div>
@@ -43,6 +50,7 @@
 
 <script src="src/config.js"></script>
 <script src="src/math.js"></script>
+<script src="src/alert.js"></script>
 <script src="map/city.js"></script>
 <script src="src/input.js"></script>
 <script src="src/world.js"></script>
@@ -52,6 +60,7 @@
 <script src="src/bullet.js"></script>
 <script src="src/car.js"></script>
 <script src="src/player.js"></script>
+<script src="src/police.js"></script>
 <script src="src/hud.js"></script>
 <script src="src/main.js"></script>
 <script>
@@ -211,6 +220,10 @@ function run() {
     assert('running someone over leaves a blood splat',
       CJ.Blood.count > bloodBefore, CJ.Blood.count + ' splats');
     assert('the kill is counted', s.kills >= 1, s.kills + ' kills');
+
+    // That kill raised the alert; clear it so a squad car cannot interrupt the
+    // rest of the suite (the police tests below set their own heat).
+    CJ.Police.reset();
 
     // --- exit ------------------------------------------------------------
     tap('KeyE');
@@ -439,7 +452,142 @@ function run() {
     assert('R clears the wasted state', s.dead === false && s.wastedVisible === false);
     assert('R restores your starting cash', s.money === 100, '$' + s.money);
 
+    // --- alert meter and the police response -----------------------------
+    tap('KeyR');
+    tick(2);
+    s = state();
+    assert('the alert meter starts empty', s.alert === 0 && !s.police.active,
+      'alert ' + s.alert);
+    window.CJGame.render();
+    assert('the HUD paints five shields',
+      document.querySelectorAll('#hud-alert-badges .badge').length === CJ.CFG.ALERT_BADGES,
+      document.querySelectorAll('#hud-alert-badges .badge').length + ' shields');
+    assert('the HUD starts at zero',
+      document.getElementById('hud-alert-text').textContent === '0',
+      document.getElementById('hud-alert-text').textContent);
+
+    window.CJGame.addHeat(CJ.CFG.ALERT_RUN_OVER + CJ.CFG.ALERT_SHOOT_HIT);
+    window.CJGame.render();
+    s = state();
+    assert('running someone over and shooting raises the meter', s.alert === 22,
+      'alert ' + s.alert);
+    assert('the HUD shows the new alert',
+      document.getElementById('hud-alert-text').textContent === '22',
+      document.getElementById('hud-alert-text').textContent);
+    assert('the first shield lights up and the second does not', (function () {
+      var shields = document.querySelectorAll('#hud-alert-badges .badge');
+      return shields[0].className.indexOf('on') !== -1 &&
+             shields[1].className.indexOf('on') === -1;
+    })());
+
+    // The station takes a moment to dispatch, then a car comes looking.
+    tick(Math.ceil(CJ.CFG.POLICE_CALL_DELAY / CJ.CFG.DT) + 4);
+    s = state();
+    var policeCar = s.police.car;
+    var station = s.world.policeStation;
+    var stationX = station.x + station.w / 2;
+    var stationY = station.y + station.h / 2;
+    assert('the second badge sends a police car', !!policeCar && s.police.cops === 2,
+      policeCar ? s.police.cops + ' officers' : 'no car');
+    assert('the squad car is in the world', !!policeCar && s.cars.indexOf(policeCar) !== -1);
+    assert('the squad car came from the station', !!policeCar &&
+      CJ.M.dist(policeCar.x, policeCar.y, stationX, stationY) < s.world.tile * 8,
+      policeCar ? CJ.M.dist(policeCar.x, policeCar.y, stationX, stationY).toFixed(0) + 'px' : 'none');
+
+    var chaseFrom = CJ.M.dist(policeCar.x, policeCar.y, s.player.x, s.player.y);
+    tick(120);
+    s = state();
+    var chaseTo = CJ.M.dist(policeCar.x, policeCar.y, s.player.x, s.player.y);
+    assert('the squad car closes in on you', chaseTo < chaseFrom - 100,
+      chaseFrom.toFixed(0) + ' -> ' + chaseTo.toFixed(0) + 'px');
+
+    // Park the squad car next to the player: the officers should pile out.
+    policeCar.x = s.player.x + 26;
+    policeCar.y = s.player.y;
+    policeCar.vx = 0;
+    policeCar.vy = 0;
+    policeCar.speed = 0;
+    tick(2);
+    s = state();
+    assert('officers jump out of the car', s.police.deployed && s.police.afoot === 2,
+      s.police.afoot + ' afoot');
+
+    tick(120);
+    s = state();
+    assert('officers grab you and bust you', s.busted === true && s.bustedVisible === true,
+      'bust timer ' + s.police.bustTimer.toFixed(2));
+    assert('a bust takes $50 bail', s.money === 50, '$' + s.money);
+    assert('being busted empties the alert', s.alert === 0, 'alert ' + s.alert);
+    assert('the squad car is stood down after a bust', !s.police.active);
+
+    document.getElementById('hud-busted-respawn').click();
+    tick(1);
+    s = state();
+    assert('the busted overlay clears on release',
+      s.busted === false && s.bustedVisible === false);
+    assert('you are released outside the police station',
+      Math.abs(s.player.x - s.world.policeSpawn.x) < 1 &&
+      Math.abs(s.player.y - s.world.policeSpawn.y) < 1,
+      s.player.x.toFixed(0) + ',' + s.player.y.toFixed(0));
+    assert('you are patched up after a bust', s.player.hp === CJ.CFG.P_HP, s.player.hp + ' hp');
+
+    // Being grabbed while driving pulls you out of the car.
+    tap('KeyR');
+    tick(2);
+    s = state();
+    var parked = s.cars[0];
+    s.player.x = parked.x + 20;
+    s.player.y = parked.y;
+    tick(1);
+    tap('KeyE');
+    s = state();
+    assert('test setup: player is driving', !!s.player.driving);
+    window.CJGame.bust();
+    tick(1);
+    s = state();
+    assert('a bust pulls you out of the car',
+      s.player.driving === null && s.busted === true);
+    assert('the bail is charged for a car bust', s.money === 50, '$' + s.money);
+    document.getElementById('hud-busted-respawn').click();
+    tick(1);
+    assert('you can move again after release',
+      (function () { hold('ArrowRight', 20); return state().player.x !== s.world.policeSpawn.x; })());
+
+    // --- reinforcements: one car for every filled badge -------------------
+    tap('KeyR');
+    tick(2);
+    window.CJGame.addHeat(CJ.CFG.ALERT_CHASE_AT * 3);   // three badges
+    tick(225);                                          // dispatch + two more
+    s = state();
+    var policeOnRoad = s.cars.filter(function (c) { return c.police; }).length;
+    assert('three filled badges send three squad cars', s.police.cars === 3,
+      s.police.cars + ' cars');
+    assert('every squad car is a police car in the world',
+      policeOnRoad === 3, policeOnRoad + ' police cars');
+    assert('each squad car brings two officers', s.police.cops === 6,
+      s.police.cops + ' officers');
+    assert('the reinforcements left the station one at a time', (function () {
+      // All three are on the road, facing along it, and none share a spot.
+      for (var a = 0; a < CJ.Police.units.length; a++) {
+        for (var b = a + 1; b < CJ.Police.units.length; b++) {
+          var ca = CJ.Police.units[a].car;
+          var cb = CJ.Police.units[b].car;
+          if (!ca || !cb) continue;
+          if (CJ.M.dist(ca.x, ca.y, cb.x, cb.y) < 1) return false;
+        }
+      }
+      return true;
+    })());
+    window.CJGame.render();
+
     // --- rendering must not throw ----------------------------------------
+    tap('F1');
+    var debugFrame = true;
+    try { window.CJGame.render(); } catch (e) { debugFrame = false; }
+    assert('the debug overlay renders the alert and police state',
+      debugFrame && state().debug === true);
+    tap('F1');
+
     var rendered = true;
     try { window.CJGame.render(); } catch (e) { rendered = false; }
     assert('a full frame renders without throwing', rendered);

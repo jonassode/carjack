@@ -101,6 +101,25 @@ window.CJ = window.CJ || {};
     return grid.map(function (row) { return row.join(''); });
   }
 
+  // Gap between a parked car's flank and the kerb, in tiles. The car is 22px
+  // wide (~0.34 tiles), so this leaves it a few pixels clear of the kerb while
+  // staying inside its own lane.
+  var CURB_GAP = 0.30;
+
+  // Snap a car spawn (x/y in tile units, h in radians) out of the middle of the
+  // street and up against the kerb on the right-hand side of its heading.
+  function park(x, y, h) {
+    var alongX = Math.abs(Math.cos(h)) >= Math.abs(Math.sin(h)); // heading east/west
+    var across = alongX ? y : x;                                 // across the street
+    var block = Math.floor(across / BLOCK) * BLOCK;              // start of its block
+    var kerbLow = block + BLOCK - ROAD_W;                        // kerbside tile pair
+    var kerbHigh = block + BLOCK;
+    // Right of the heading: +y for east (h=0), -y for west, -x for south, +x for north.
+    var rightIsHigh = alongX ? (Math.cos(h) > 0) : (-Math.sin(h) > 0);
+    var parked = rightIsHigh ? kerbHigh - CURB_GAP : kerbLow + CURB_GAP;
+    return alongX ? { x: x, y: parked, h: h } : { x: parked, y: y, h: h };
+  }
+
   CJ.MAP_CITY = {
     tileSize: 64,
     blockSize: BLOCK,        // tiles per city block (used to lay out sidewalk routes)
@@ -116,16 +135,18 @@ window.CJ = window.CJ || {};
     // with a car parked on the road straight below it.
     playerSpawn: { x: 8.5, y: 5.5 },
 
-    // Parked cars. x/y in tile units, h = heading in radians (0 = east).
+    // Parked cars. `park()` above takes a point on the street and slides it
+    // sideways until the car hugs the kerb on its right, so the city never
+    // looks like a traffic jam frozen in the middle of the road.
     cars: [
-      { x: 8.5, y: 6.5,  h: 0 },
-      { x: 26.0, y: 7.0,  h: 0 },
-      { x: 12.0, y: 15.0, h: Math.PI },
-      { x: 36.0, y: 23.0, h: 0 },
-      { x: 20.0, y: 31.0, h: 0 },
-      { x: 44.0, y: 39.0, h: Math.PI },
-      { x: 15.0, y: 22.0, h: Math.PI / 2 },
-      { x: 31.0, y: 40.0, h: -Math.PI / 2 }
+      park(8.5, 6.5, 0),
+      park(26.0, 7.0, 0),
+      park(12.0, 15.0, Math.PI),
+      park(36.0, 23.0, 0),
+      park(20.0, 31.0, 0),
+      park(44.0, 39.0, Math.PI),
+      park(15.0, 22.0, Math.PI / 2),
+      park(31.0, 40.0, -Math.PI / 2)
     ]
   };
 })();

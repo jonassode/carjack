@@ -105,6 +105,39 @@
   #hud-car-health { display: none; margin-top: 6px; }
   #hud-car-health-fill { background: linear-gradient(90deg, #d1a248, #ffd15c); }
 
+  /* ---- alert meter: five police shields ---- */
+  .badges {
+    display: flex;
+    gap: 4px;
+    margin-top: 3px;
+    height: 21px;
+  }
+  .badge {
+    width: 17px;
+    height: 21px;
+    --fill: 0%;
+    background: linear-gradient(90deg,
+      #ffd15c 0%, #ffd15c var(--fill),
+      rgba(255, 255, 255, 0.12) var(--fill),
+      rgba(255, 255, 255, 0.12) 100%);
+    clip-path: polygon(50% 0%, 100% 16%, 100% 64%, 50% 100%, 0% 64%, 0% 16%);
+    transition: background 0.12s linear;
+  }
+  .badge.on {
+    filter: drop-shadow(0 0 5px rgba(255, 209, 92, 0.65));
+    animation: badge-pop 0.3s ease-out;
+  }
+  .badge.alerted {
+    background: linear-gradient(90deg,
+      #ff8a5c 0%, #ff8a5c var(--fill),
+      rgba(255, 255, 255, 0.12) var(--fill),
+      rgba(255, 255, 255, 0.12) 100%);
+  }
+  @keyframes badge-pop {
+    from { transform: scale(1.35); }
+    to   { transform: scale(1); }
+  }
+
   .lbl {
     font-size: 9px;
     letter-spacing: 0.14em;
@@ -153,8 +186,8 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* ---- WASTED overlay ---- */
-  #hud-wasted {
+  /* ---- WASTED / BUSTED overlays ---- */
+  #hud-wasted, #hud-busted {
     position: absolute;
     inset: 0;
     display: none;
@@ -168,12 +201,13 @@
     pointer-events: auto;
     animation: wasted-in 0.35s ease-out;
   }
+  #hud-busted { background: rgba(4, 8, 18, 0.74); }
   @keyframes wasted-in {
     from { opacity: 0; }
     to   { opacity: 1; }
   }
 
-  #hud-wasted h2 {
+  #hud-wasted h2, #hud-busted h2 {
     margin: 0;
     font-size: clamp(44px, 11vw, 104px);
     font-weight: 800;
@@ -188,16 +222,26 @@
       0 12px 44px rgba(0, 0, 0, 0.75);
     transform: rotate(-2deg);
   }
+  #hud-busted h2 {
+    color: #5b9bff;
+    text-shadow:
+      0 0 2px #041029,
+      0 2px 0 #0b2b6d,
+      0 4px 0 #06183d,
+      0 0 30px rgba(91, 155, 255, 0.75),
+      0 12px 44px rgba(0, 0, 0, 0.75);
+  }
 
-  #hud-wasted-money {
+  #hud-wasted-money, #hud-busted-money {
     font-size: 13px;
     letter-spacing: 0.16em;
     color: #ffb9ae;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
     font-variant-numeric: tabular-nums;
   }
+  #hud-busted-money { color: #b9d4ff; }
 
-  #hud-respawn {
+  #hud-respawn, #hud-busted-respawn {
     margin-top: 8px;
     padding: 11px 30px;
     font: inherit;
@@ -214,12 +258,14 @@
     box-shadow: 0 6px 0 rgba(0, 0, 0, 0.35), 0 10px 24px rgba(0, 0, 0, 0.45);
     transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.15s;
   }
-  #hud-respawn:hover { background: linear-gradient(180deg, #fff, #dbe4ee); }
-  #hud-respawn:active {
+  #hud-respawn:hover, #hud-busted-respawn:hover {
+    background: linear-gradient(180deg, #fff, #dbe4ee);
+  }
+  #hud-respawn:active, #hud-busted-respawn:active {
     transform: translateY(3px);
     box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35), 0 6px 14px rgba(0, 0, 0, 0.45);
   }
-  #hud-respawn:focus-visible {
+  #hud-respawn:focus-visible, #hud-busted-respawn:focus-visible {
     outline: 2px solid #ffd15c;
     outline-offset: 3px;
   }
@@ -244,6 +290,8 @@
       <div class="lbl">Chassis</div>
       <div class="bar"><div id="hud-car-health-fill"></div></div>
     </div>
+    <div class="lbl">Alert <span id="hud-alert-text">0</span></div>
+    <div class="badges" id="hud-alert-badges" aria-hidden="true"></div>
   </div>
 
   <div class="panel" id="panel-legend">
@@ -257,11 +305,18 @@
     <div id="hud-wasted-money">-$25</div>
     <button id="hud-respawn" type="button">Respawn at hospital</button>
   </div>
+
+  <div id="hud-busted">
+    <h2>BUSTED</h2>
+    <div id="hud-busted-money">-$50</div>
+    <button id="hud-busted-respawn" type="button">Respawn at police station</button>
+  </div>
 </div>
 
 <!-- Classic scripts, dependency order, no build step. -->
 <script src="src/config.js"></script>
 <script src="src/math.js"></script>
+<script src="src/alert.js"></script>
 <script src="map/city.js"></script>
 <script src="src/input.js"></script>
 <script src="src/world.js"></script>
@@ -271,6 +326,7 @@
 <script src="src/bullet.js"></script>
 <script src="src/car.js"></script>
 <script src="src/player.js"></script>
+<script src="src/police.js"></script>
 <script src="src/hud.js"></script>
 <script src="src/main.js"></script>
 </body>

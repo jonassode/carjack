@@ -32,9 +32,17 @@ CJ.Car = (function () {
     this.vx = 0;
     this.vy = 0;
     this.color = o.color || CJ.CFG.CAR_COLORS[0];
-    this.hp = CJ.CFG.CAR_HP;
+    this.hp = o.hp || CJ.CFG.CAR_HP;
 
-    this.driver = null;      // a Player while occupied
+    // Optional overrides: police cars are quicker and tougher than parked ones.
+    this.maxSpeed = o.maxSpeed || CJ.CFG.CAR_MAX;
+    this.accel = o.accel || CJ.CFG.CAR_ACCEL;
+    this.police = !!o.police;
+    this.auto = false;       // true while the police AI is driving
+    this.siren = 0;          // light-bar phase, in radians
+    this.ramCd = 0;          // seconds until a ram can hurt the player again
+
+    this.driver = null;      // a Player (or cop) while occupied
     this.throttle = 0;
     this.steer = 0;
     this.brake = false;
@@ -45,6 +53,7 @@ CJ.Car = (function () {
   // ------------------------------------------------------------------ physics
   Car.prototype.update = function (dt, ctrl) {
     var C = CJ.CFG;
+    if (this.ramCd > 0) this.ramCd -= dt;
 
     // Basis from the *current* heading.
     var cosH = Math.cos(this.heading);
@@ -60,17 +69,17 @@ CJ.Car = (function () {
 
     // Throttle / brake / reverse.
     if (throttle > 0) {
-      fwd += C.CAR_ACCEL * dt;
+      fwd += this.accel * dt;
     } else if (throttle < 0) {
       if (fwd > 12) fwd -= C.CAR_BRAKE * dt;        // pressed S while rolling forward
-      else fwd -= C.CAR_ACCEL * 0.7 * dt;           // reverse
+      else fwd -= this.accel * 0.7 * dt;            // reverse
     }
 
     // Rolling resistance, never overshooting zero.
     if (fwd > 0) fwd = Math.max(0, fwd - C.CAR_ROLL * dt);
     else if (fwd < 0) fwd = Math.min(0, fwd + C.CAR_ROLL * dt);
 
-    fwd = M.clamp(fwd, C.CAR_MAX_REV, C.CAR_MAX);
+    fwd = M.clamp(fwd, C.CAR_MAX_REV, this.maxSpeed);
 
     // Lateral grip: exponential so it is frame-rate independent.
     lat *= Math.exp(-C.GRIP * dt);
@@ -176,6 +185,12 @@ CJ.Car = (function () {
     return M.dist(this.x, this.y, px, py) <= CJ.CFG.CAR_LEN / 2 + pad;
   };
 
+  // Headlights (and the cones they throw) are only on while someone is driving.
+  // A police car keeps its lights on even when the officers have bailed out.
+  Car.prototype.lightsOn = function () {
+    return !!this.driver || this.police;
+  };
+
   Car.prototype.render = render;
 
   return Car;
@@ -185,20 +200,23 @@ CJ.Car = (function () {
     var C = CJ.CFG;
     var L = C.CAR_LEN;
     var W = C.CAR_W;
+    var lights = this.lightsOn();
 
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.heading);
 
-    // Headlight cones, under everything else.
-    ctx.fillStyle = 'rgba(255,246,205,0.055)';
-    ctx.beginPath();
-    ctx.moveTo(L / 2, -W * 0.34);
-    ctx.lineTo(L / 2 + 130, -64);
-    ctx.lineTo(L / 2 + 130, 64);
-    ctx.lineTo(L / 2, W * 0.34);
-    ctx.closePath();
-    ctx.fill();
+    // Headlight cones, under everything else, and only for a car in use.
+    if (lights) {
+      ctx.fillStyle = 'rgba(255,246,205,0.055)';
+      ctx.beginPath();
+      ctx.moveTo(L / 2, -W * 0.34);
+      ctx.lineTo(L / 2 + 130, -64);
+      ctx.lineTo(L / 2 + 130, 64);
+      ctx.lineTo(L / 2, W * 0.34);
+      ctx.closePath();
+      ctx.fill();
+    }
 
     // Shadow.
     ctx.fillStyle = 'rgba(0,0,0,0.32)';
@@ -226,6 +244,16 @@ CJ.Car = (function () {
     ctx.strokeStyle = 'rgba(0,0,0,0.38)';
     ctx.stroke();
 
+    // Squad-car livery: a blue band over the doors with a white door panel.
+    if (this.police) {
+      ctx.fillStyle = CJ.CFG.COL.policeStripe;
+      rr(ctx, -L * 0.10, -W / 2, L * 0.30, W, 3);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.90)';
+      rr(ctx, L * 0.02, -W * 0.30, L * 0.10, W * 0.60, 2);
+      ctx.fill();
+    }
+
     // Cabin + glass.
     ctx.fillStyle = 'rgba(0,0,0,0.20)';
     rr(ctx, -L * 0.24, -W * 0.36, L * 0.46, W * 0.72, 4);
@@ -237,8 +265,33 @@ CJ.Car = (function () {
     rr(ctx, -L * 0.33, -W * 0.31, L * 0.09, W * 0.62, 3);
     ctx.fill();
 
-    // Lights.
-    ctx.fillStyle = 'rgba(255,240,190,0.90)';
+    // Roof light bar: red and blue halves that chase each other.
+    if (this.police) {
+      var pulse = Math.sin(this.siren);
+      var red = Math.max(0, pulse);
+      var blue = Math.max(0, -pulse);
+      var glow = 0.10;
+
+      ctx.fillStyle = 'rgba(16,20,26,0.95)';
+      ctx.fillRect(-L * 0.04, -W * 0.44, 6, W * 0.88);
+      ctx.fillStyle = 'rgba(255,59,48,' + (0.30 + 0.70 * red).toFixed(3) + ')';
+      ctx.fillRect(-L * 0.04, -W * 0.42, 6, W * 0.40);
+      ctx.fillStyle = 'rgba(59,130,255,' + (0.30 + 0.70 * blue).toFixed(3) + ')';
+      ctx.fillRect(-L * 0.04, W * 0.02, 6, W * 0.40);
+
+      // A little light spill so the bar reads at a glance.
+      ctx.fillStyle = 'rgba(255,59,48,' + (glow * red).toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.arc(-L * 0.04, -W * 0.30, 40, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(59,130,255,' + (glow * blue).toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.arc(-L * 0.04, W * 0.30, 40, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Lamps: warm lenses while driven, dark glass while parked.
+    ctx.fillStyle = lights ? 'rgba(255,240,190,0.90)' : 'rgba(22,27,33,0.55)';
     ctx.fillRect(L / 2 - 3, -W * 0.42 - 2, 3, 5);
     ctx.fillRect(L / 2 - 3, W * 0.42 - 3, 3, 5);
     if (this.brake) {

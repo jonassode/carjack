@@ -15,6 +15,7 @@ CJ.Player = (function () {
     this.hp = CJ.CFG.P_HP;
     this.money = CJ.CFG.MONEY_START;   // dollars
     this.dead = false;      // true between being wiped out and pressing respawn
+    this.busted = false;   // true while the BUSTED overlay is up
     this.aim = 0;          // radians, drives the gun
     this.face = 0;         // radians, drives the body
     this.walk = 0;         // animation phase

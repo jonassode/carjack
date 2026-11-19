@@ -27,6 +27,7 @@
 
 <script src="src/config.js"></script>
 <script src="src/math.js"></script>
+<script src="src/alert.js"></script>
 <script src="map/city.js"></script>
 <script src="src/world.js"></script>
 <script src="src/camera.js"></script>
@@ -35,6 +36,7 @@
 <script src="src/bullet.js"></script>
 <script src="src/car.js"></script>
 <script src="src/player.js"></script>
+<script src="src/police.js"></script>
 <script>
 (function () {
   'use strict';
@@ -176,6 +178,14 @@
   var turner = new CJ.Car({ x: 300, y: 300, h: 0 });
   for (i = 0; i < 30; i++) { turner.update(CJ.CFG.DT, { throttle: 1, steer: 1 }); turner.integrate(CJ.CFG.DT, flat); }
   assert('car: steering changes heading', turner.heading > 0.3, 'h=' + turner.heading.toFixed(2));
+
+  // ---------------------------------------------------------------- car lights
+  var lamp = new CJ.Car({ x: 0, y: 0, h: 0 });
+  assert('car: headlights are off while parked', lamp.lightsOn() === false);
+  lamp.driver = { x: 0, y: 0 };
+  assert('car: headlights come on while driven', lamp.lightsOn() === true);
+  lamp.driver = null;
+  assert('car: headlights go off after getting out', lamp.lightsOn() === false);
 
   // ---------------------------------------------------------------- car vs wall
   var wall = fakeWorld([{ x: 500, y: 0, w: 64, h: 1000, kind: 'building' }]);
@@ -464,6 +474,224 @@
   assert('specials: hospital spawn is inside the world',
     hs.x > 0 && hs.y > 0 && hs.x < world.w && hs.y < world.h);
 
+  // ---------------------------------------------------------------- alert meter
+  var perBadge = CJ.CFG.ALERT_MAX / CJ.CFG.ALERT_BADGES;
+  var bait = new CJ.Alert();
+
+  assert('alert: starts empty',
+    bait.value === 0 && bait.badges() === 0 && bait.fill(0) === 0);
+  assert('alert: five shields of twenty points', perBadge === 20, String(perBadge));
+
+  bait.add(8);
+  assert('alert: running someone over adds a little',
+    bait.value === 8 && bait.badges() === 0, String(bait.value));
+  assert('alert: the first shield is partly lit',
+    near(bait.fill(0), 8 / perBadge) && bait.fill(1) === 0);
+
+  bait.add(34);
+  assert('alert: shooting adds heat', bait.value === 42, String(bait.value));
+  assert('alert: two shields are lit', bait.badges() === 2, String(bait.badges()));
+  assert('alert: the second badge is the chase trigger',
+    bait.hot() === true && CJ.CFG.ALERT_CHASE_AT === perBadge);
+  assert('alert: the third shield is a tenth lit', near(bait.fill(2), 0.1));
+
+  bait.add(1000);
+  assert('alert: caps at full',
+    bait.value === CJ.CFG.ALERT_MAX && bait.badges() === CJ.CFG.ALERT_BADGES);
+  assert('alert: every shield is full at the cap', bait.fill(0) === 1 && bait.fill(4) === 1);
+
+  assert('alert: nonsense adds are ignored', (function () {
+    var a = new CJ.Alert();
+    a.add(NaN); a.add(-5); a.add(0);
+    return a.value === 0;
+  })());
+
+  // Decay waits for the cooldown, then drains to (but not past) zero.
+  var cooling = new CJ.Alert();
+  cooling.add(50);
+  for (i = 0; i < Math.floor(CJ.CFG.ALERT_COOLDOWN / CJ.CFG.DT) - 2; i++) {
+    cooling.update(CJ.CFG.DT);
+  }
+  assert('alert: does not cool while the trail is hot', near(cooling.value, 50, 1e-9),
+    String(cooling.value));
+  for (i = 0; i < 60 * 60; i++) cooling.update(CJ.CFG.DT);
+  assert('alert: drains when nothing happens', cooling.value < 50, String(cooling.value));
+  assert('alert: never drains below zero', cooling.value >= 0, String(cooling.value));
+  assert('alert: a new crime refreshes the cooling timer', (function () {
+    var a = new CJ.Alert();
+    a.add(40);
+    for (var n = 0; n < CJ.CFG.ALERT_COOLDOWN / CJ.CFG.DT; n++) a.update(CJ.CFG.DT);
+    a.add(0.0001);
+    var before = a.value;
+    for (n = 0; n < 60; n++) a.update(CJ.CFG.DT);
+    return a.value === before;
+  })());
+
+  // ---------------------------------------------------------------- police
+  var copSpawn = CJ.Police.spawnPoint(world);
+  assert('police: the station has a road spawn', !!copSpawn,
+    copSpawn ? copSpawn.x.toFixed(0) + ',' + copSpawn.y.toFixed(0) : 'none');
+  assert('police: the spawn is on a road tile',
+    !!copSpawn &&
+    world.tileChar(Math.floor(copSpawn.x / world.tile),
+                   Math.floor(copSpawn.y / world.tile)) === '=');
+  var stationCx = world.policeStation.x + world.policeStation.w / 2;
+  var stationCy = world.policeStation.y + world.policeStation.h / 2;
+  assert('police: the spawn is close to the station',
+    !!copSpawn && M.dist(copSpawn.x, copSpawn.y, stationCx, stationCy) < world.tile * 5,
+    copSpawn ? M.dist(copSpawn.x, copSpawn.y, stationCx, stationCy).toFixed(0) + 'px' : 'none');
+
+  var route = CJ.Police.findPath(world, stationCx, stationCy,
+                                 world.playerSpawn.x, world.playerSpawn.y);
+  assert('police: a road route to the player exists',
+    !!route && route.length > 10, route ? route.length + ' waypoints' : 'none');
+  var routeOnRoad = true;
+  if (route) {
+    for (i = 0; i < route.length; i++) {
+      if (world.tileChar(Math.floor(route[i].x / world.tile),
+                         Math.floor(route[i].y / world.tile)) !== '=') routeOnRoad = false;
+    }
+  }
+  assert('police: every waypoint is on the road', routeOnRoad);
+  assert('police: the route ends near the player', !!route &&
+    M.dist(route[route.length - 1].x, route[route.length - 1].y,
+           world.playerSpawn.x, world.playerSpawn.y) < world.tile * 4);
+
+  var patrolCars = [];
+  var baitPlayer = new CJ.Player(world.playerSpawn.x, world.playerSpawn.y);
+  CJ.Police.init(world, function () {});
+  CJ.Police.reset();
+  CJ.Police.addHeat(CJ.CFG.ALERT_CHASE_AT);
+  var dispatchSteps = Math.ceil(CJ.CFG.POLICE_CALL_DELAY / CJ.CFG.DT) + 2;
+  for (i = 0; i < dispatchSteps; i++) {
+    CJ.Police.update(CJ.CFG.DT, baitPlayer, patrolCars);
+  }
+  assert('police: the second badge dispatches a car',
+    patrolCars.length === 1 && patrolCars[0].police, patrolCars.length + ' cars');
+  assert('police: the squad car is faster than yours',
+    patrolCars.length === 1 && patrolCars[0].maxSpeed > CJ.CFG.CAR_MAX);
+  assert('police: the squad car leaves from the station',
+    patrolCars.length === 1 &&
+    M.dist(patrolCars[0].x, patrolCars[0].y, copSpawn.x, copSpawn.y) < 1);
+  assert('police: two officers are in the car',
+    CJ.Police.active && CJ.Police.snapshot().cops === 2 &&
+    CJ.Police.snapshot().afoot === 0);
+
+  CJ.Police.disengage();
+  assert('police: standing down removes the car and empties the meter',
+    patrolCars.length === 0 && !CJ.Police.active && CJ.Police.alert === 0);
+
+  // ---------------------------------------------------------------- fleet
+  // One squad car for every badge filled: 20 points = 1 car, 40 = 2, 60 = 3 ...
+  var fleetCars = [];
+  var fleetPlayer = new CJ.Player(world.playerSpawn.x, world.playerSpawn.y);
+  var callSteps = Math.ceil(CJ.CFG.POLICE_CALL_DELAY / CJ.CFG.DT);
+  var reinforceSteps = Math.ceil(CJ.CFG.POLICE_REINFORCE_DELAY / CJ.CFG.DT);
+
+  function runFleet(heat, steps) {
+    CJ.Police.reset();
+    fleetCars.length = 0;
+    CJ.Police.addHeat(heat);
+    for (var n = 0; n < steps; n++) CJ.Police.update(CJ.CFG.DT, fleetPlayer, fleetCars);
+  }
+
+  runFleet(perBadge, callSteps + 4);
+  assert('fleet: one filled badge sends one car', fleetCars.length === 1,
+    fleetCars.length + ' cars');
+  assert('fleet: a single car carries two officers',
+    CJ.Police.snapshot().cops === 2, CJ.Police.snapshot().cops + ' officers');
+
+  runFleet(perBadge * 2, callSteps + reinforceSteps + 6);
+  assert('fleet: two filled badges send two cars', fleetCars.length === 2,
+    fleetCars.length + ' cars');
+  assert('fleet: every reinforcement is a squad car',
+    fleetCars[0].police === true && fleetCars[1].police === true);
+  assert('fleet: two cars bring four officers',
+    CJ.Police.snapshot().cops === 4, CJ.Police.snapshot().cops + ' officers');
+  assert('fleet: two cars are reported as two units',
+    CJ.Police.snapshot().units === 2 && CJ.Police.snapshot().cars === 2);
+
+  runFleet(perBadge * 3, callSteps + reinforceSteps * 2 + 8);
+  assert('fleet: three filled badges send three cars', fleetCars.length === 3,
+    fleetCars.length + ' cars');
+
+  runFleet(CJ.CFG.ALERT_MAX, callSteps + reinforceSteps * 5 + 12);
+  assert('fleet: a full meter sends one car per badge',
+    fleetCars.length === CJ.CFG.ALERT_BADGES, fleetCars.length + ' cars');
+  assert('fleet: five cars bring ten officers',
+    CJ.Police.snapshot().cops === CJ.CFG.ALERT_BADGES * 2,
+    CJ.Police.snapshot().cops + ' officers');
+  assert('fleet: the fleet never exceeds the meter',
+    CJ.Police.snapshot().wanted === CJ.CFG.ALERT_BADGES &&
+    fleetCars.length <= CJ.CFG.POLICE_MAX_UNITS);
+
+  // Reinforcements must not spawn inside the car already at the station.
+  var spotA = CJ.Police.spawnPoint(world, []);
+  var spotB = CJ.Police.spawnPoint(world, [spotA]);
+  assert('fleet: reinforcements get their own road spot',
+    !!spotA && !!spotB && M.dist(spotA.x, spotA.y, spotB.x, spotB.y) >= CJ.CFG.CAR_LEN,
+    spotB ? M.dist(spotA.x, spotA.y, spotB.x, spotB.y).toFixed(0) + 'px apart' : 'none');
+  assert('fleet: the second spot is still a road tile',
+    world.tileChar(Math.floor(spotB.x / world.tile),
+                   Math.floor(spotB.y / world.tile)) === '=');
+
+  // Dropping one crew retires only that car, and the station tops the fleet up.
+  var beforeUnits = CJ.Police.snapshot().units;
+  var doomedUnit = CJ.Police.units[0];
+  var doomedCops = doomedUnit.cops.length;
+  for (i = 0; i < doomedCops; i++) CJ.Police.hitCop(doomedUnit.cops[i], 1, 0);
+  CJ.Police.update(CJ.CFG.DT, fleetPlayer, fleetCars);
+  assert('fleet: wiping out one crew retires only its car',
+    CJ.Police.snapshot().units === beforeUnits - 1,
+    CJ.Police.snapshot().units + ' units left');
+  assert('fleet: the other cars keep chasing', CJ.Police.snapshot().cars >= 3,
+    CJ.Police.snapshot().cars + ' cars');
+  for (i = 0; i < reinforceSteps + 4; i++) {
+    CJ.Police.update(CJ.CFG.DT, fleetPlayer, fleetCars);
+  }
+  assert('fleet: the station sends a replacement car',
+    CJ.Police.snapshot().units === beforeUnits, CJ.Police.snapshot().units + ' units');
+
+  CJ.Police.reset();
+  assert('fleet: reset clears every car', fleetCars.length === 0 && !CJ.Police.active,
+    fleetCars.length + ' cars');
+
+  // ---------------------------------------------------------------- police bullets
+  CJ.Bullets.clear();
+  var victimPlayer = new CJ.Player(world.playerSpawn.x, world.playerSpawn.y);
+  var playerHits = 0;
+  CJ.Bullets.spawn(world.playerSpawn.x - 50, world.playerSpawn.y, 0, null);
+  for (i = 0; i < 20 && CJ.Bullets.liveCount > 0; i++) {
+    CJ.Bullets.update(CJ.CFG.DT, world, [], null, [], null, victimPlayer,
+      function () { playerHits++; });
+  }
+  assert('bullets: a cop bullet can hit you on foot', playerHits === 1,
+    'hits=' + playerHits);
+
+  CJ.Bullets.clear();
+  playerHits = 0;
+  CJ.Bullets.spawn(victimPlayer.x - 50, victimPlayer.y, 0, victimPlayer);
+  for (i = 0; i < 20 && CJ.Bullets.liveCount > 0; i++) {
+    CJ.Bullets.update(CJ.CFG.DT, world, [], null, [], null, victimPlayer,
+      function () { playerHits++; });
+  }
+  assert('bullets: your own bullet cannot hit you', playerHits === 0,
+    'hits=' + playerHits);
+
+  // ---------------------------------------------------------------- squad car
+  var squad = new CJ.Car({
+    x: 0, y: 0, h: 0, police: true, hp: 180, maxSpeed: 900, accel: 900
+  });
+  assert('car: the police flag and siren exist',
+    squad.police === true && squad.siren === 0);
+  assert('car: a police car keeps its lights on when unmanned',
+    squad.lightsOn() === true);
+  assert('car: police cars take custom chassis health', squad.hp === 180);
+  for (i = 0; i < 600; i++) squad.update(CJ.CFG.DT, { throttle: 1, steer: 0 });
+  assert('car: the max speed override is respected',
+    near(squad.speed, 900, 1) && squad.speed > CJ.CFG.CAR_MAX,
+    squad.speed.toFixed(0) + ' px/s');
+
   // ---------------------------------------------------------------- camera
   var cam = CJ.Camera;
   cam.setViewport(800, 600);
@@ -488,6 +716,30 @@
     if (world.isSolidAt(cs.x, cs.y, CJ.CFG.CAR_RADIUS)) carInWall++;
   }
   assert('city: no car spawn overlaps a building', carInWall === 0, carInWall + ' bad');
+
+  // Parked cars must hug a kerb rather than straddling the middle of the lane.
+  var tile = CJ.CFG.TILE;
+  var blockTiles = CJ.MAP_CITY.blockSize;
+  var roadW = CJ.MAP_CITY.roadWidth;
+  var halfW = CJ.CFG.CAR_W / 2;
+  var maxGap = -1e9, midRoad = 0, overKerb = 0;
+  for (i = 0; i < world.carSpawns.length; i++) {
+    var spawn = world.carSpawns[i];
+    var alongX = Math.abs(Math.cos(spawn.h)) >= Math.abs(Math.sin(spawn.h));
+    var across = alongX ? spawn.y : spawn.x;
+    var blockStart = Math.floor(Math.floor(across / tile) / blockTiles) * blockTiles;
+    var kerbLow = (blockStart + blockTiles - roadW) * tile;
+    var kerbHigh = (blockStart + blockTiles) * tile;
+    // Distance from whichever flank is nearest to a kerb, in px.
+    var gap = Math.min(kerbHigh - (across + halfW), (across - halfW) - kerbLow);
+    maxGap = Math.max(maxGap, gap);
+    if (gap > tile * 0.25) midRoad++;   // parked out in the traffic lane
+    if (gap < 0) overKerb++;            // mounted the pavement
+  }
+  assert('city: every parked car hugs a kerb', midRoad === 0,
+    'widest kerb gap ' + maxGap.toFixed(1) + 'px');
+  assert('city: every parked car stays inside the kerbs', overKerb === 0,
+    overKerb + ' over a kerb');
 
   var roadCount = 0;
   for (var ty = 0; ty < world.rows; ty++) {

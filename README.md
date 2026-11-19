@@ -4,15 +4,23 @@ A GTA 2 style top-down driving/shooting prototype. Everything is drawn with
 flat geometric shapes — no sprites, no images, no assets at all.
 
 - Drive a car around a city of streets, houses, parks and trees
+- Cars are parked along the kerb with their lights off; headlights and their
+  beams come on only once you are behind the wheel
 - Press **E** to jump out and run around on foot
 - On foot, aim with the mouse and shoot by **clicking** (or holding the button)
 - Pedestrians wander the sidewalks, duck in and out of houses, scatter from
   speeding cars — and turn into a blood splat if you run them over or shoot them
 - One police station and one hospital, both marked on the minimap
+- A five-shield **alert meter** tracks how much attention you have drawn: running
+  people over and shooting them raises it, and from the second shield on the
+  station sends **one squad car per filled badge** — five badges means five cars
+  — which chase and ram you, then bail out to shoot and drag you out of the car
 - Cars explode when their chassis is destroyed, hurting you by proximity
   (up to 30%) or by half your health if you are still inside
 - Run out of health and you are **WASTED** — you lose $25 and must click the
   respawn button to wake up outside the hospital
+- Get grabbed by an officer and you are **BUSTED** — you lose $50 and wake up
+  outside the police station
 - You start with $100 and can never go below $0
 
 ## Run it
@@ -55,6 +63,7 @@ smoke.html      end-to-end test that boots the real game and simulates input
 src/config.js   every tunable number and colour, in one place
 src/math.js     vectors, clamp, circle/AABB/segment collisions
 src/input.js    key state, edge-triggered presses, mouse -> world
+src/alert.js    0..100 police awareness, five 20-point badges, cooling down
 map/city.js     the city as an ASCII grid + car spawns
 src/world.js    ASCII -> collision boxes, special buildings, spatial index, drawing
 src/camera.js   smoothed follow camera, world clamping, screen shake
@@ -63,7 +72,8 @@ src/peds.js     pedestrian state machine: walk, enter/exit houses, flee, die
 src/car.js      arcade car physics, capsule collision, car rendering
 src/player.js   on-foot movement and rendering
 src/bullet.js   bullet pool with swept wall collision
-src/hud.js      cash/health/speed panels, minimap, WASTED overlay, debug text
+src/police.js   dispatch, road-grid pursuit, rams, officers on foot, busting
+src/hud.js      cash/health/alert panels, minimap, WASTED/BUSTED overlays, debug
 src/main.js     fixed-step loop, entity wiring, enter/exit glue
 ```
 
@@ -90,7 +100,15 @@ top speed. Bullets use a swept segment test for the same reason.
 **Enter / exit.** While driving, the player entity is pinned to the car. On
 exit, four candidate spots (right, left, behind, in front) are tested against
 the world and the first clear one wins, plus a short grace period so the car
-does not immediately shove the player back.
+does not immediately shove the player back. `Car.lightsOn()` is simply "is
+anyone sitting in it", so the headlight beam, the warm lenses and the cone of
+light all disappear the moment you step out.
+
+**Parked cars.** `map/city.js` authors each spawn as a point on the street and
+runs it through `park()`, which looks up the 2-tile road band for the car's
+block, works out which kerb is on its right for that heading, and slides the
+car `CURB_GAP` (0.30 tiles) away from it. The `cars` list therefore reads as
+"park here" and still lines the kerbside exactly if you move a coordinate.
 
 **Pedestrian navigation.** No pathfinding. Every city block (8×8 tiles) has a
 ring of sidewalk tiles, and peds are spawned onto a ring and walk point to
@@ -129,6 +147,26 @@ the flag, restores full health and teleports you to `world.hospitalSpawn`.
 `M.charge(balance, amount)` is a pure function so the "never below $0" rule is
 unit-tested in isolation rather than buried in the death path.
 
+**Alert and the police response.** `CJ.Alert` is pure state: a 0..100 value,
+five shields of 20 points, and a cooldown timer. Crimes call `add()`, which caps
+the meter and restarts the cooldown; `update(dt)` drains 1.1 points a second
+once eight seconds have passed without a crime. Crossing 20 points — into the
+second shield — is the dispatch trigger. `CJ.Police` owns the meter and the
+response: it wants one squad car per badge filled (`ALERT_BADGES` at most), so
+two shields bring two cars and a full meter brings five. The first leaves after
+`POLICE_CALL_DELAY`, each reinforcement follows `POLICE_REINFORCE_DELAY` later,
+and every car takes the next free piece of road outside the station so they
+never spawn inside each other. Each car recomputes a breadth-first route over
+the road tiles every 0.8 s. It aims a look-ahead waypoint down that route so it brakes into
+corners, and inside `POLICE_RAM_RANGE` with a clear line it drops the route and
+drives straight at you. If it gets wedged it reverses for half a second and
+tries the corner again. Once you are on foot and close — or stopped beside it in
+a car — the officers bail out, shoot when they have line of sight (holding fire
+inside `COP_HOLD_FIRE` so they can grab you), and after `POLICE_BUST_TIME` of
+contact the BUSTED overlay appears: the meter empties, the squad car is removed
+and the bail is charged. The heat keeps decaying during a chase, so a clean
+getaway eventually makes them stand down.
+
 **Rendering.** Ground tiles are drawn per frame with culling; buildings are
 slightly darker rectangles with a lighter roof, a fake "wall" band on the south
 and east edges, and a window pattern, which is enough to read them as 3D.
@@ -155,15 +193,27 @@ Everything lives in `src/config.js`. The ones worth touching first:
 | `EXPLOSION_IN_CAR_FRAC` | share lost if the car you are in explodes (0.50) |
 | `MONEY_START` | cash you begin with (100) |
 | `MONEY_DEATH_COST` | cash lost each time you are wasted (25) |
+| `MONEY_BUST_COST` | bail each time you are busted (50) |
+| `ALERT_RUN_OVER`, `ALERT_SHOOT_HIT`, `ALERT_COP_KILL` | heat per crime |
+| `ALERT_CHASE_AT` | points that trigger a dispatch (20 = second shield) |
+| `ALERT_DECAY`, `ALERT_COOLDOWN` | how fast, and how soon, the meter cools |
+| `POLICE_CALL_DELAY` | seconds between the trigger and the first car leaving the station |
+| `POLICE_REINFORCE_DELAY` | gap between one squad car rolling out and the next |
+| `POLICE_MAX_UNITS` | most cars on the road at once (5 = one per badge) |
+| `POLICE_SPEED_MULT` | how much faster the squad car is |
+| `POLICE_DEPLOY_RANGE` | how close it stops before the officers get out |
+| `COP_SPEED`, `COP_FIRE_CD`, `POLICE_BULLET_DMG` | officers on foot |
+| `POLICE_BUST_TIME` | seconds of grabbing before you are busted |
 
 ## Tests
 
 ```bash
-# 100 assertions: collisions, car physics, world parsing, bullets, peds, blood,
-#                 special buildings, blast damage, money, camera
+# 153 assertions: collisions, car physics, parking, headlights, world parsing,
+#                 bullets, cops, peds, blood, special buildings, blast damage,
+#                 money, the alert meter, the police fleet, camera
 open tests.html          # or: python3 -m http.server 8000 → /tests.html
 
-# 67 assertions: boots the game and simulates real key/mouse input
+# 94 assertions: boots the game and simulates real key/mouse input
 open smoke.html
 ```
 
@@ -178,8 +228,8 @@ Both print green/red rows and a summary line. They also expose
 
 ## Not implemented (deliberately, for this prototype)
 
-Drive-by shooting, NPC traffic, police/wanted level, sound, sprites, rotating
-(GTA2-style) camera, saving, healing inside the hospital. The data hooks exist:
-`world.cars`, `Car.hp`, `Bullets.owner` takes any entity, `Bullets.update`
-already accepts a pedestrian list for the shooting callback, and the police
-station is parsed and drawn but has no behaviour attached yet.
+Drive-by shooting, NPC traffic, sound, sprites, rotating (GTA2-style) camera,
+saving, healing inside the hospital, police roadblocks and anything beyond the
+five-shield meter (no national guard, no bribes). The data hooks exist:
+`world.cars`, `Car.hp`, `Bullets.owner` takes any entity, and `Bullets.update`
+accepts pedestrians, police officers and the player as targets.

@@ -47,6 +47,8 @@ window.CJ = window.CJ || {};
     exitGrace = 0;
     paused = false;
     CJ.HUD.hideWasted();
+    CJ.HUD.hideBusted();
+    CJ.Police.reset();
 
     cars = world.carSpawns.map(function (spawn, i) {
       return new CJ.Car({
@@ -71,8 +73,10 @@ window.CJ = window.CJ || {};
     world.init(CJ.MAP_CITY);
     CJ.Peds.init(world, CJ.MAP_CITY);
     CJ.Input.init(canvas);
+    CJ.Police.init(world, bustPlayer);
     CJ.HUD.init();
     CJ.HUD.onRespawn(respawnPlayer);
+    CJ.HUD.onBustRespawn(respawnFromBust);
     resize();
 
     window.addEventListener('resize', resize);
@@ -87,6 +91,7 @@ window.CJ = window.CJ || {};
     var best = null;
     var bestD = C.ENTER_RANGE;
     for (var i = 0; i < cars.length; i++) {
+      if (cars[i].police) continue;                // never hijack a squad car
       var d = M.dist(player.x, player.y, cars[i].x, cars[i].y);
       if (d < bestD) { bestD = d; best = cars[i]; }
     }
@@ -163,6 +168,7 @@ window.CJ = window.CJ || {};
 
     cars.splice(idx, 1);
     if (graceCar === car) { graceCar = null; exitGrace = 0; }
+    CJ.Police.onCarDestroyed(car);
 
     explosions.push({ x: cx, y: cy, r: 14, max: C.EXPLOSION_RADIUS, life: 0.5, maxLife: 0.5 });
     spawnBurst(cx, cy, 34, ['#fff3c4', '#ffd25c', '#ff8a3d', '#ff4a2f', '#8a3b1e', '#4a4f57']);
@@ -177,14 +183,16 @@ window.CJ = window.CJ || {};
     }
   }
 
-  function onHitCar(car, x, y) {
-    car.hp -= C.B_DAMAGE;
+  function onHitCar(car, x, y, owner) {
+    // Officers do not shoot their own squad car.
+    if (car.police && owner && owner.isCop) return;
+    car.hp -= (owner && owner.isCop) ? C.COP_CAR_DAMAGE : C.B_DAMAGE;
     spawnSparks(x, y, 4);
   }
 
   // ---------------------------------------------------------------- health
   function damagePlayer(amount) {
-    if (!(amount > 0) || player.dead || player.hp <= 0) return 0;
+    if (!(amount > 0) || player.dead || player.busted || player.hp <= 0) return 0;
     var before = player.hp;
     player.hp = Math.max(0, player.hp - amount);
     flash = Math.min(1, flash + 0.3 + amount / (C.P_HP * 2));
@@ -210,6 +218,7 @@ window.CJ = window.CJ || {};
 
     player.money = M.charge(player.money, C.MONEY_DEATH_COST);
 
+    CJ.Police.disengage();     // nobody is chasing a corpse
     flash = 1;
     cam.shake(9);
     CJ.HUD.showWasted(player.money, C.MONEY_DEATH_COST);
@@ -233,12 +242,60 @@ window.CJ = window.CJ || {};
     player.vy = 0;
     player.hp = C.P_HP;
     player.dead = false;
+    player.busted = false;
     player.collide(world);
 
     CJ.HUD.hideWasted();
     flash = 1;
     cam.setTarget(player, true);
     cam.shake(6);
+  }
+
+  // The officers have hold of you: you are pulled out of the car, bail is taken
+  // and the BUSTED overlay stays up until you click respawn.
+  function bustPlayer() {
+    if (player.dead || player.busted) return;
+
+    if (player.driving) {
+      var car = player.driving;
+      car.driver = null;
+      player.x = car.x;
+      player.y = car.y;
+      player.vx = 0;
+      player.vy = 0;
+      player.driving = null;
+    }
+
+    player.busted = true;
+    player.vx = 0;
+    player.vy = 0;
+    player.money = M.charge(player.money, C.MONEY_BUST_COST);
+
+    CJ.Police.disengage();     // heat drops to zero and the squad car clears off
+    flash = 1;
+    cam.shake(8);
+    cam.setTarget(player);
+    CJ.HUD.showBusted(player.money, C.MONEY_BUST_COST);
+  }
+
+  // Called by the BUSTED overlay's button: released on the pavement outside the
+  // police station, with the meter empty.
+  function respawnFromBust() {
+    if (!player.busted) return;
+
+    var spot = world.policeSpawn;
+    player.x = spot.x;
+    player.y = spot.y;
+    player.vx = 0;
+    player.vy = 0;
+    player.hp = C.P_HP;
+    player.busted = false;
+    player.collide(world);
+
+    CJ.HUD.hideBusted();
+    flash = 1;
+    cam.setTarget(player, true);
+    cam.shake(4);
   }
 
   // ------------------------------------------------------------------ particles
@@ -361,6 +418,7 @@ window.CJ = window.CJ || {};
           }
           if (!deepest) break;
 
+          var rel = M.len(cars[a].vx - cars[b].vx, cars[a].vy - cars[b].vy);
           dx = deepest.nx * deepest.depth * 0.5;
           dy = deepest.ny * deepest.depth * 0.5;
           cars[a].x += dx; cars[a].y += dy;
@@ -368,6 +426,18 @@ window.CJ = window.CJ || {};
 
           M.cancelInto(cars[a], deepest.nx, deepest.ny);
           M.cancelInto(cars[b], -deepest.nx, -deepest.ny);
+
+          // A squad car shunting yours hurts the chassis a little and shakes
+          // the camera; the cooldown stops one long contact draining it.
+          if (rel > 160 && (cars[a].police || cars[b].police)) {
+            var victim = cars[a].police ? cars[b] : cars[a];
+            if (victim === player.driving && victim.ramCd <= 0) {
+              victim.ramCd = 0.5;
+              victim.hp = Math.max(0, victim.hp - rel * 0.02);
+              cam.shake(Math.min(10, rel * 0.02));
+              spawnSparks((cars[a].x + cars[b].x) / 2, (cars[a].y + cars[b].y) / 2, 4);
+            }
+          }
         }
       }
     }
@@ -402,18 +472,53 @@ window.CJ = window.CJ || {};
     cam.shake(1.8);
   }
 
-  function onHitPed(ped, x, y) {
-    if (!ped.kill(Math.cos(player.aim), Math.sin(player.aim))) return;
+  function onHitPed(ped, x, y, owner) {
+    // Officers are bullet targets too; dropping one is expensive heat.
+    if (ped.isCop) {
+      var cdir = (owner && owner !== player)
+        ? M.norm(ped.x - owner.x, ped.y - owner.y)
+        : { x: Math.cos(player.aim), y: Math.sin(player.aim) };
+      if (!CJ.Police.hitCop(ped, cdir.x, cdir.y)) return;
+      spawnBurst(x, y, 6, ['#8b1a1a', '#6b1414', '#a02020']);
+      cam.shake(1.6);
+      return;
+    }
+
+    // Smear the splat away from whoever fired the shot.
+    var dirX, dirY;
+    if (owner === player) {
+      dirX = Math.cos(player.aim);
+      dirY = Math.sin(player.aim);
+    } else if (owner) {
+      var n = M.norm(ped.x - owner.x, ped.y - owner.y);
+      dirX = n.x;
+      dirY = n.y;
+    } else {
+      dirX = 1;
+      dirY = 0;
+    }
+
+    if (!ped.kill(dirX, dirY)) return;
+    if (owner === player) CJ.Police.addHeat(C.ALERT_SHOOT_HIT);
     spawnBurst(x, y, 6, ['#8b1a1a', '#6b1414', '#a02020']);
     cam.shake(1.2);
+  }
+
+  // A cop's bullet found you.
+  function onHitPlayer(x, y) {
+    spawnBurst(x, y, 5, ['#8b1a1a', '#6b1414', '#a02020']);
+    damagePlayer(C.POLICE_BULLET_DMG);
   }
 
   // Every car flattens the people it drives into.
   function runOverPeds() {
     for (var i = 0; i < cars.length; i++) {
-      var flattened = CJ.Peds.hitByCar(cars[i]);
+      var car = cars[i];
+      var flattened = CJ.Peds.hitByCar(car);
       if (!flattened) continue;
-      spawnBurst(cars[i].x, cars[i].y, 5, ['#8b1a1a', '#6b1414']);
+      // Only crimes committed from behind your own wheel raise the alert.
+      if (car === player.driving) CJ.Police.addHeat(C.ALERT_RUN_OVER * flattened);
+      spawnBurst(car.x, car.y, 5, ['#8b1a1a', '#6b1414']);
       cam.shake(Math.min(10, 3 + flattened * 2));
     }
   }
@@ -435,7 +540,7 @@ window.CJ = window.CJ || {};
     explodeDeadCars();
 
     // Enter / leave the nearest car.
-    if (!player.dead && I.pressed('KeyE')) {
+    if (!player.dead && !player.busted && I.pressed('KeyE')) {
       if (player.driving) exitCar();
       else {
         var car = nearestCar();
@@ -444,15 +549,15 @@ window.CJ = window.CJ || {};
     }
 
     // Aim at the mouse whenever we are on foot.
-    if (!player.dead && !player.driving && I.mouse.moved) {
+    if (!player.dead && !player.busted && !player.driving && I.mouse.moved) {
       var mw = cam.screenToWorld(I.mouse.sx, I.mouse.sy);
       player.aim = Math.atan2(mw.y - player.y, mw.x - player.x);
     }
 
     var axis = I.axis();
 
-    if (player.dead) {
-      // Wasted: no control at all, but the city keeps moving around you.
+    if (player.dead || player.busted) {
+      // Wasted or busted: no control at all, but the city keeps moving.
       axis = { x: 0, y: 0 };
     } else if (player.driving) {
       var driven = player.driving;
@@ -472,10 +577,14 @@ window.CJ = window.CJ || {};
       if (I.firing() && player.canFire()) fire();
     }
 
-    // Parked cars keep settling (and coast after an exit).
+    // The police chase, deploy and shoot before parked cars settle.
+    CJ.Police.update(dt, player, cars);
+
+    // Parked cars keep settling (and coast after an exit). The squad car is on
+    // autopilot, so leave its physics to the police module.
     for (var i = 0; i < cars.length; i++) {
       var c = cars[i];
-      if (c === player.driving) continue;
+      if (c === player.driving || c.auto) continue;
       c.update(dt, null);
       c.integrate(dt, world);
     }
@@ -484,8 +593,9 @@ window.CJ = window.CJ || {};
     collidePlayerCars();
     runOverPeds();
 
+    var targets = CJ.Peds.targets().concat(CJ.Police.targets());
     CJ.Peds.update(dt, world, cars);
-    CJ.Bullets.update(dt, world, cars, onHitCar, CJ.Peds.targets(), onHitPed);
+    CJ.Bullets.update(dt, world, cars, onHitCar, targets, onHitPed, player, onHitPlayer);
     updateParticles(dt);
     updateExplosions(dt);
     if (flash > 0) flash = Math.max(0, flash - dt * 1.4);
@@ -552,6 +662,7 @@ window.CJ = window.CJ || {};
     CJ.Peds.draw(ctx);
 
     for (var i = 0; i < cars.length; i++) cars[i].render(ctx);
+    CJ.Police.draw(ctx);
     if (!player.driving) player.draw(ctx);
     CJ.Bullets.draw(ctx);
     drawExplosions(ctx);
@@ -573,7 +684,12 @@ window.CJ = window.CJ || {};
       ctx.fillRect(0, 0, view.w, view.h);
     }
 
-    CJ.HUD.update({ player: player, paused: paused });
+    CJ.HUD.update({
+      player: player,
+      paused: paused,
+      alert: CJ.Police.meter,
+      chase: CJ.Police.active
+    });
     CJ.HUD.draw(ctx, {
       cam: cam,
       world: world,
@@ -620,7 +736,10 @@ window.CJ = window.CJ || {};
     step: step,
     render: render,
     respawn: respawnPlayer,
+    respawnBusted: respawnFromBust,
     damage: damagePlayer,
+    addHeat: CJ.Police.addHeat,
+    bust: bustPlayer,
     getState: function () {
       return {
         player: player,
@@ -634,8 +753,13 @@ window.CJ = window.CJ || {};
         bulletsLive: CJ.Bullets.liveCount,
         money: player.money,
         dead: player.dead,
+        busted: player.busted,
+        bustedVisible: !!(document.getElementById('hud-busted') &&
+          document.getElementById('hud-busted').style.display === 'flex'),
         wastedVisible: !!(document.getElementById('hud-wasted') &&
           document.getElementById('hud-wasted').style.display === 'flex'),
+        alert: CJ.Police.alert,
+        police: CJ.Police.snapshot(),
         peds: CJ.Peds.list,
         pedsAlive: CJ.Peds.aliveCount,
         kills: CJ.Peds.kills,

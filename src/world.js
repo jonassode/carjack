@@ -22,6 +22,7 @@ CJ.World = (function () {
   var policeStation = null;
   var hospital = null;
   var hospitalSpawn = { x: 0, y: 0 };
+  var policeSpawn = { x: 0, y: 0 };
 
   var index = { cell: 0, cols: 0, rows: 0, buckets: [] };
   var stamp = 1;
@@ -229,6 +230,7 @@ CJ.World = (function () {
     policeStation = footprint('police');
     hospital = footprint('hospital');
     hospitalSpawn = hospital ? spawnOutside(hospital) : { x: 0, y: 0 };
+    policeSpawn = policeStation ? spawnOutside(policeStation) : { x: 0, y: 0 };
 
     carSpawns = (def.cars || []).map(function (c) {
       return { x: c.x * T, y: c.y * T, h: c.h || 0 };
@@ -516,6 +518,7 @@ CJ.World = (function () {
     get policeStation() { return policeStation; },
     get hospital() { return hospital; },
     get hospitalSpawn() { return hospitalSpawn; },
+    get policeSpawn() { return policeSpawn; },
     get tile() { return T; },
     get cols() { return cols; },
     get rows() { return rows; },
