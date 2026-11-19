@@ -189,8 +189,10 @@ CJ.Car = (function () {
   };
 
   // Headlights (and the cones they throw) are only on while someone is driving.
-  // A police car keeps its lights on even when the officers have bailed out.
+  // A police car keeps its lights on even when the officers have bailed out; a
+  // street cleaner never runs headlights at all.
   Car.prototype.lightsOn = function () {
+    if (this.cleaner) return false;
     return !!this.driver || this.police;
   };
 
@@ -258,7 +260,8 @@ CJ.Car = (function () {
     }
 
     // Street-cleaner livery: a water tank on the deck, an amber beacon and a
-    // spinning brush under the nose, with a wash of water while it scrubs.
+    // spinning brush under the nose, throwing a low splash of water while it
+    // scrubs. No headlights, and no forward beam of any kind.
     if (this.cleaner) {
       var CL = CJ.CFG.COL;
 
@@ -301,18 +304,21 @@ CJ.Car = (function () {
       ctx.fill();
       ctx.restore();
 
-      // Water fan while washing, so the scrub reads from across the street.
+      // Water while it scrubs: a low halo of splashing droplets around the
+      // brush, not a forward beam (the sweeper runs no headlights).
       if (this.spraying) {
-        ctx.globalAlpha = 0.5;
-        ctx.fillStyle = CL.water;
+        var ox = L / 2 - 4;
+        ctx.strokeStyle = CL.water;
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.moveTo(L / 2, -W * 0.6);
-        ctx.lineTo(L / 2 + 52, -22);
-        ctx.lineTo(L / 2 + 52, 22);
-        ctx.lineTo(L / 2, W * 0.6);
-        ctx.closePath();
-        ctx.fill();
-        ctx.globalAlpha = 1;
+        for (var wd = 0; wd < 9; wd++) {
+          var wa = (wd / 9) * Math.PI * 2 + this.brush * 0.4;
+          ctx.moveTo(ox + Math.cos(wa) * 10, Math.sin(wa) * 11);
+          ctx.lineTo(ox + Math.cos(wa) * 17, Math.sin(wa) * 18);
+        }
+        ctx.stroke();
+        ctx.lineCap = 'butt';
       }
     }
 
