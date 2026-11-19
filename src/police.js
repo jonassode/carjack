@@ -278,12 +278,32 @@ CJ.Police = (function () {
       if (units[i].car) removeCar(units[i].car);
     }
     units.length = 0;
+    // Squad cars whose crews were wiped out were left in the world to be
+    // stolen; a death, a bust or R sweeps those up too.
+    if (carsRef) {
+      for (var j = carsRef.length - 1; j >= 0; j--) {
+        if (carsRef[j].abandoned) carsRef.splice(j, 1);
+      }
+    }
   }
 
-  // Drop one response (its car leaves the world with it).
-  function retire(u) {
-    if (!u) return;
-    if (u.car) removeCar(u.car);
+  // The crew is gone, but its car is not: it is left parked where it stopped so
+  // the player can steal it, and this unit stops managing it. Every abandoned
+  // squad car is swept up by despawnAll (death, bust or R).
+  function abandonUnit(u) {
+    var car = u.car;
+    if (car) {
+      car.abandoned = true;
+      car.auto = false;
+      car.driver = null;
+      car.vx = 0;
+      car.vy = 0;
+      car.speed = 0;
+      car.throttle = 0;
+      car.steer = 0;
+      car.brake = false;
+    }
+    u.car = null;
     var i = units.indexOf(u);
     if (i !== -1) units.splice(i, 1);
   }
@@ -543,7 +563,7 @@ CJ.Police = (function () {
       if (!u.cops[i].dead) living++;
     }
     if (!living) {
-      retire(u);                 // this crew is done; the others carry on
+      abandonUnit(u);            // crew down: leave the car, the others carry on
       return false;
     }
 

@@ -640,6 +640,7 @@
   var beforeUnits = CJ.Police.snapshot().units;
   var doomedUnit = CJ.Police.units[0];
   var doomedCops = doomedUnit.cops.length;
+  var doomedCar = doomedUnit.car;
   for (i = 0; i < doomedCops; i++) CJ.Police.hitCop(doomedUnit.cops[i], 1, 0);
   CJ.Police.update(CJ.CFG.DT, fleetPlayer, fleetCars);
   assert('fleet: wiping out one crew retires only its car',
@@ -653,9 +654,22 @@
   assert('fleet: the station sends a replacement car',
     CJ.Police.snapshot().units === beforeUnits, CJ.Police.snapshot().units + ' units');
 
+  // The crew we wiped is gone, but its squad car stayed behind to be stolen.
+  assert('fleet: a wiped-out crew leaves its squad car behind',
+    !!doomedCar && fleetCars.indexOf(doomedCar) !== -1 && doomedCar.abandoned === true,
+    doomedCar ? (doomedCar.abandoned ? 'left in the world' : 'removed') : 'no car');
+  assert('fleet: the abandoned squad car can be stolen',
+    !!doomedCar && doomedCar.canEnter() === true);
+  assert('fleet: a live squad car cannot be hijacked',
+    new CJ.Car({ police: true }).canEnter() === false);
+  assert('fleet: a sweeper is never enterable',
+    new CJ.Car({ cleaner: true }).canEnter() === false);
+
   CJ.Police.reset();
   assert('fleet: reset clears every car', fleetCars.length === 0 && !CJ.Police.active,
     fleetCars.length + ' cars');
+  assert('fleet: reset also sweeps up the abandoned squad car',
+    fleetCars.indexOf(doomedCar) === -1);
 
   // ---------------------------------------------------------------- police bullets
   CJ.Bullets.clear();

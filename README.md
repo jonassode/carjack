@@ -15,6 +15,7 @@ flat geometric shapes — no sprites, no images, no assets at all.
   people over and shooting them raises it, and from the second shield on the
   station sends **one squad car per filled badge** — five badges means five cars
   — which chase and ram you, then bail out to shoot and drag you out of the car
+  (drop the whole crew and their squad car is left behind, free to steal)
 - A little **street-cleaner depot** building sends out a lone, slow sweeper truck
   twenty seconds after any blood appears; it drives along the roads and cleans
   the mess up by rolling right over it, then parks up again — so the streets
@@ -168,9 +169,13 @@ drives straight at you. If it gets wedged it reverses for half a second and
 tries the corner again. Once you are on foot and close — or stopped beside it in
 a car — the officers bail out, shoot when they have line of sight (holding fire
 inside `COP_HOLD_FIRE` so they can grab you), and after `POLICE_BUST_TIME` of
-contact the BUSTED overlay appears: the meter empties, the squad car is removed
-and the bail is charged. The heat keeps decaying during a chase, so a clean
-getaway eventually makes them stand down.
+contact the BUSTED overlay appears: the meter empties, every squad car (and any
+abandoned one you left lying around) is cleared and the bail is charged. The heat
+keeps decaying during a chase, so a clean getaway eventually makes them stand
+down. Killing a whole crew does *not* remove their car: `abandonUnit` leaves it
+parked where it stopped with `car.abandoned = true`, and `Car.canEnter()` lets
+you press **E** and steal it. A death, a bust or **R** calls `despawnAll`, which
+sweeps up both the active and the abandoned squad cars.
 
 **Street cleaners.** `CJ.Cleaner` is the tidy-up crew, and there is only ever
 one of it (`CLEANER_MAX_UNITS`). Every decal carries an `age` (bumped once a step
@@ -232,13 +237,13 @@ Everything lives in `src/config.js`. The ones worth touching first:
 ## Tests
 
 ```bash
-# 166 assertions: collisions, car physics, parking, headlights, world parsing,
+# 171 assertions: collisions, car physics, parking, headlights, world parsing,
 #                 bullets, cops, peds, blood, special buildings, blast damage,
-#                 money, the alert meter, the police fleet, the cleaner depot,
-#                 camera
+#                 money, the alert meter, the police fleet (incl. stealing a
+#                 wiped-out crew's car), the cleaner depot, camera
 open tests.html          # or: python3 -m http.server 8000 → /tests.html
 
-# 94 assertions: boots the game and simulates real key/mouse input
+# 97 assertions: boots the game and simulates real key/mouse input
 open smoke.html
 ```
 

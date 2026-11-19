@@ -38,6 +38,7 @@ CJ.Car = (function () {
     this.maxSpeed = o.maxSpeed || CJ.CFG.CAR_MAX;
     this.accel = o.accel || CJ.CFG.CAR_ACCEL;
     this.police = !!o.police;
+    this.abandoned = false;  // a squad car whose crew is gone: free to steal
     this.auto = false;       // true while the police AI is driving
     this.siren = 0;          // light-bar phase, in radians
     this.ramCd = 0;          // seconds until a ram can hurt the player again
@@ -186,6 +187,14 @@ CJ.Car = (function () {
   Car.prototype.containsPoint = function (px, py, pad) {
     pad = pad || 0;
     return M.dist(this.x, this.y, px, py) <= CJ.CFG.CAR_LEN / 2 + pad;
+  };
+
+  // Whether the player may hop in. Never a sweeper, and never a squad car that
+  // still has its officers — but a squad car whose crew is down is fair game.
+  Car.prototype.canEnter = function () {
+    if (this.cleaner) return false;
+    if (this.police && !this.abandoned) return false;
+    return true;
   };
 
   // Headlights (and the cones they throw) are only on while someone is driving.

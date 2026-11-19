@@ -581,6 +581,28 @@ function run() {
     })());
     window.CJGame.render();
 
+    // --- wipe out a crew: its car stays behind and can be stolen ----------
+    var doomed = CJ.Police.units[0];
+    var lootCar = doomed.car;
+    for (var dc = 0; dc < doomed.cops.length; dc++) CJ.Police.hitCop(doomed.cops[dc], 1, 0);
+    tick(1);
+    s = state();
+    assert('wiping out a crew leaves its squad car in the world',
+      s.cars.indexOf(lootCar) !== -1 && lootCar.abandoned === true,
+      s.cars.indexOf(lootCar) !== -1 ? 'car still parked' : 'car vanished');
+    assert('the abandoned squad car is no longer an active unit',
+      CJ.Police.units.indexOf(doomed) === -1);
+
+    s.player.x = lootCar.x + 20;
+    s.player.y = lootCar.y;
+    s.player.vx = 0;
+    s.player.vy = 0;
+    tick(1);
+    tap('KeyE');
+    s = state();
+    assert('you can steal an abandoned squad car', s.player.driving === lootCar,
+      s.player.driving ? 'driving' : 'on foot');
+
     // --- rendering must not throw ----------------------------------------
     tap('F1');
     var debugFrame = true;

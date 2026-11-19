@@ -93,7 +93,7 @@ window.CJ = window.CJ || {};
     var best = null;
     var bestD = C.ENTER_RANGE;
     for (var i = 0; i < cars.length; i++) {
-      if (cars[i].police || cars[i].cleaner) continue;  // never hijack a squad car or a sweeper
+      if (!cars[i].canEnter()) continue;   // not a sweeper, not a live squad car
       var d = M.dist(player.x, player.y, cars[i].x, cars[i].y);
       if (d < bestD) { bestD = d; best = cars[i]; }
     }
@@ -186,8 +186,8 @@ window.CJ = window.CJ || {};
   }
 
   function onHitCar(car, x, y, owner) {
-    // Officers do not shoot their own squad car.
-    if (car.police && owner && owner.isCop) return;
+    // Officers do not shoot their own squad car (an abandoned one is fair game).
+    if (car.police && !car.abandoned && owner && owner.isCop) return;
     car.hp -= (owner && owner.isCop) ? C.COP_CAR_DAMAGE : C.B_DAMAGE;
     spawnSparks(x, y, 4);
   }
@@ -429,10 +429,13 @@ window.CJ = window.CJ || {};
           M.cancelInto(cars[a], deepest.nx, deepest.ny);
           M.cancelInto(cars[b], -deepest.nx, -deepest.ny);
 
-          // A squad car shunting yours hurts the chassis a little and shakes
-          // the camera; the cooldown stops one long contact draining it.
-          if (rel > 160 && (cars[a].police || cars[b].police)) {
-            var victim = cars[a].police ? cars[b] : cars[a];
+          // A live squad car shunting yours hurts the chassis a little and shakes
+          // the camera; the cooldown stops one long contact draining it. An
+          // abandoned (stolen) squad car does not get this.
+          var aCop = cars[a].police && !cars[a].abandoned;
+          var bCop = cars[b].police && !cars[b].abandoned;
+          if (rel > 160 && (aCop || bCop)) {
+            var victim = aCop ? cars[b] : cars[a];
             if (victim === player.driving && victim.ramCd <= 0) {
               victim.ramCd = 0.5;
               victim.hp = Math.max(0, victim.hp - rel * 0.02);
