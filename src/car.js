@@ -48,6 +48,9 @@ CJ.Car = (function () {
     this.brake = false;
     this.speed = 0;          // forward speed, for the HUD
     this.lastImpact = 0;
+    this.cleaner = !!o.cleaner; // a street-cleaner depot truck
+    this.brush = 0;          // spinning-brush phase, in radians
+    this.spraying = false;   // true while scrubbing a splat away
   }
 
   // ------------------------------------------------------------------ physics
@@ -252,6 +255,65 @@ CJ.Car = (function () {
       ctx.fillStyle = 'rgba(255,255,255,0.90)';
       rr(ctx, L * 0.02, -W * 0.30, L * 0.10, W * 0.60, 2);
       ctx.fill();
+    }
+
+    // Street-cleaner livery: a water tank on the deck, an amber beacon and a
+    // spinning brush under the nose, with a wash of water while it scrubs.
+    if (this.cleaner) {
+      var CL = CJ.CFG.COL;
+
+      // Rear water tank.
+      ctx.fillStyle = CL.cleanerTank;
+      rr(ctx, -L * 0.44, -W * 0.40, L * 0.30, W * 0.80, 5);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.30)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Hazard stripe across the flank.
+      ctx.fillStyle = CL.cleanerTrim;
+      rr(ctx, -L * 0.06, -W / 2, L * 0.20, W, 2);
+      ctx.fill();
+
+      // Amber beacon, pulsing with the brush.
+      var on = (0.55 + 0.45 * Math.sin(this.brush * 2)).toFixed(3);
+      ctx.fillStyle = 'rgba(255,176,50,' + on + ')';
+      ctx.beginPath();
+      ctx.arc(L * 0.01, 0, 3.4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Spinning brush under the nose.
+      ctx.save();
+      ctx.translate(L / 2 - 4, 0);
+      ctx.rotate(this.brush);
+      ctx.strokeStyle = CL.cleanerBrush;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      for (var bb = 0; bb < 8; bb++) {
+        var ba = (bb / 8) * Math.PI * 2;
+        ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(ba) * 8, Math.sin(ba) * 8);
+      }
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(40,46,54,0.9)';
+      ctx.beginPath();
+      ctx.arc(0, 0, 3.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Water fan while washing, so the scrub reads from across the street.
+      if (this.spraying) {
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = CL.water;
+        ctx.beginPath();
+        ctx.moveTo(L / 2, -W * 0.7);
+        ctx.lineTo(L / 2 + 72, -30);
+        ctx.lineTo(L / 2 + 72, 30);
+        ctx.lineTo(L / 2, W * 0.7);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
     }
 
     // Cabin + glass.

@@ -37,6 +37,7 @@
 <script src="src/car.js"></script>
 <script src="src/player.js"></script>
 <script src="src/police.js"></script>
+<script src="src/cleaner.js"></script>
 <script>
 (function () {
   'use strict';
@@ -748,6 +749,85 @@
     }
   }
   assert('city: has a street grid', roadCount > 900, roadCount + ' road tiles');
+
+  // ---------------------------------------------------------------- street cleaners
+  // A splat that lives CLEAN_DELAY seconds summons a truck from the depot; the
+  // truck scrubs the decals near it, so the pool drains back down instead of
+  // ever filling up to SPLAT_MAX.
+  CJ.Blood.clear();
+  CJ.Cleaner.init(world);
+  CJ.Cleaner.reset();
+  var cleanerCars = [];
+
+  assert('cleaner: the depot building sits on the map',
+    !!world.depot && world.depot.kind === 'depot', world.depot ? 'found' : 'missing');
+  assert('cleaner: the depot is a small building, not a whole block',
+    !!world.depot && world.depot.w <= world.tile * 4 && world.depot.h <= world.tile * 4,
+    world.depot ? (world.depot.w / world.tile) + 'x' + (world.depot.h / world.tile) + ' tiles'
+                : 'missing');
+  assert('cleaner: an ordinary car is not a sweeper',
+    new CJ.Car({ x: 0, y: 0 }).cleaner === false);
+
+  var depotSpot = CJ.Cleaner.spawnPoint(world, []);
+  assert('cleaner: a truck leaves from a road tile beside the depot',
+    !!depotSpot && world.tileChar(Math.floor(depotSpot.x / world.tile),
+                                  Math.floor(depotSpot.y / world.tile)) === '=',
+    depotSpot ? 'on the road' : 'none');
+
+  // A fresh splat must not summon anybody until it has aged past the delay.
+  CJ.Blood.add(depotSpot.x, depotSpot.y, 1, 0);
+  var beforeDelay = Math.ceil((CJ.CFG.CLEAN_DELAY - 1) / CJ.CFG.DT);
+  for (i = 0; i < beforeDelay; i++) {
+    CJ.Blood.update(CJ.CFG.DT);
+    CJ.Cleaner.update(CJ.CFG.DT, cleanerCars);
+  }
+  assert('cleaner: a fresh splat summons nobody',
+    cleanerCars.length === 0 && CJ.Blood.count === 1,
+    cleanerCars.length + ' trucks, ' + CJ.Blood.count + ' splats');
+
+  // Once it passes CLEAN_DELAY, the depot rolls a truck out.
+  for (i = 0; i < Math.ceil(2 / CJ.CFG.DT); i++) {
+    CJ.Blood.update(CJ.CFG.DT);
+    CJ.Cleaner.update(CJ.CFG.DT, cleanerCars);
+  }
+  assert('cleaner: a 20-second-old splat sends a truck',
+    cleanerCars.length === 1 && cleanerCars[0].cleaner === true,
+    cleanerCars.length + ' trucks');
+  assert('cleaner: the sweeper is a little slower than your car',
+    cleanerCars.length === 1 && cleanerCars[0].maxSpeed < CJ.CFG.CAR_MAX);
+
+  // It washes the mess away, then heads home and parks.
+  for (i = 0; i < Math.ceil(10 / CJ.CFG.DT); i++) {
+    CJ.Blood.update(CJ.CFG.DT);
+    CJ.Cleaner.update(CJ.CFG.DT, cleanerCars);
+  }
+  assert('cleaner: the truck washes the splat away', CJ.Blood.count === 0,
+    CJ.Blood.count + ' splats left');
+  assert('cleaner: the truck heads home and parks',
+    cleanerCars.length === 0 && !CJ.Cleaner.active, cleanerCars.length + ' trucks out');
+
+  // A pile of old splats cannot summon more than the cap of trucks at once.
+  CJ.Blood.clear();
+  CJ.Cleaner.reset();
+  cleanerCars.length = 0;
+  var spots = [CJ.Cleaner.spawnPoint(world, []), CJ.Police.spawnPoint(world, []),
+               { x: world.playerSpawn.x, y: world.playerSpawn.y }];
+  for (i = 0; i < 12; i++) {
+    var sp = spots[i % spots.length];
+    CJ.Blood.add(sp.x + i * 3, sp.y, 1, 0);
+  }
+  for (i = 0; i < Math.ceil((CJ.CFG.CLEAN_DELAY + 2) / CJ.CFG.DT); i++) CJ.Blood.update(CJ.CFG.DT);
+  for (i = 0; i < Math.ceil(4 / CJ.CFG.DT); i++) CJ.Cleaner.update(CJ.CFG.DT, cleanerCars);
+  assert('cleaner: the depot never sends more than its cap',
+    cleanerCars.length > 0 && cleanerCars.length <= CJ.CFG.CLEANER_MAX_UNITS,
+    cleanerCars.length + ' trucks');
+  assert('cleaner: every truck out is a sweeper',
+    cleanerCars.every(function (c) { return c.cleaner === true; }));
+
+  CJ.Cleaner.reset();
+  assert('cleaner: reset recalls the whole fleet',
+    cleanerCars.length === 0 && !CJ.Cleaner.active);
+  CJ.Blood.clear();
 
   // ---------------------------------------------------------------- done
   var summary = document.getElementById('summary');

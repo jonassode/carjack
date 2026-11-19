@@ -21,6 +21,7 @@ CJ.World = (function () {
   var playerSpawn = { x: 0, y: 0 };
   var policeStation = null;
   var hospital = null;
+  var depot = null;
   var hospitalSpawn = { x: 0, y: 0 };
   var policeSpawn = { x: 0, y: 0 };
 
@@ -39,11 +40,12 @@ CJ.World = (function () {
   function isRoadChar(c) { return c === '='; }
 
   // Every character that produces a collision box.
-  function isSolidChar(c) { return c === '#' || c === 'P' || c === 'H'; }
+  function isSolidChar(c) { return c === '#' || c === 'P' || c === 'H' || c === 'C'; }
 
   function kindForChar(c) {
     if (c === 'P') return 'police';
     if (c === 'H') return 'hospital';
+    if (c === 'C') return 'depot';
     return 'building';
   }
 
@@ -229,6 +231,7 @@ CJ.World = (function () {
 
     policeStation = footprint('police');
     hospital = footprint('hospital');
+    depot = footprint('depot');
     hospitalSpawn = hospital ? spawnOutside(hospital) : { x: 0, y: 0 };
     policeSpawn = policeStation ? spawnOutside(policeStation) : { x: 0, y: 0 };
 
@@ -359,6 +362,9 @@ CJ.World = (function () {
   function drawSpecial(ctx, b, kind) {
     var C = CJ.CFG.COL;
     var isPolice = kind === 'police';
+    var isDepot = kind === 'depot';
+    var body = isPolice ? C.police : (isDepot ? C.depot : C.hospital);
+    var roof = isPolice ? C.policeRoof : (isDepot ? C.depotRoof : C.hospitalRoof);
     var band = Math.min(8, Math.min(b.w, b.h) * 0.18);
     var cx = b.x + b.w / 2;
     var cy = b.y + b.h / 2;
@@ -366,11 +372,11 @@ CJ.World = (function () {
     // Shadow + body.
     ctx.fillStyle = C.shadow;
     ctx.fillRect(b.x + 8, b.y + 9, b.w, b.h);
-    ctx.fillStyle = isPolice ? C.police : C.hospital;
+    ctx.fillStyle = body;
     ctx.fillRect(b.x, b.y, b.w, b.h);
 
     // Roof plate.
-    ctx.fillStyle = isPolice ? C.policeRoof : C.hospitalRoof;
+    ctx.fillStyle = roof;
     ctx.fillRect(b.x + 6, b.y + 6, b.w - band - 12, b.h - band - 12);
 
     // Walls along the south/east edges, same fake height as normal buildings.
@@ -409,7 +415,7 @@ CJ.World = (function () {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('P', 0, 1);
-    } else {
+    } else if (kind === 'hospital') {
       // Red cross on a white roof.
       var arm = Math.min(b.w, b.h) * 0.16;
       var len = Math.min(b.w, b.h) * 0.34;
@@ -421,6 +427,24 @@ CJ.World = (function () {
       ctx.fillRect(-26, b.h / 2 - band - 2, 52, band + 2);
       ctx.fillStyle = 'rgba(255,255,255,0.35)';
       ctx.fillRect(-26, b.h / 2 - band - 2, 52, 2);
+    } else {
+      // Depot: a roller shutter on the south wall, a beacon and a brush glyph.
+      ctx.fillStyle = C.depotDoor;
+      ctx.fillRect(-30, b.h / 2 - band - 2, 60, band + 4);
+      ctx.fillStyle = 'rgba(255,255,255,0.16)';
+      for (var sd = 0; sd < 6; sd++) {
+        ctx.fillRect(-30 + sd * 10 + 1, b.h / 2 - band - 2, 2, band + 4);
+      }
+      ctx.fillStyle = 'rgba(255,176,50,0.9)';
+      ctx.beginPath();
+      ctx.arc(0, -b.h * 0.14, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(230,236,245,0.8)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-15, -b.h * 0.14);
+      ctx.lineTo(-5, -b.h * 0.14);
+      ctx.stroke();
     }
 
     ctx.restore();
@@ -459,7 +483,7 @@ CJ.World = (function () {
       var b = solids[i];
       if (b.x + b.w < x0 || b.x > x1 || b.y + b.h < y0 || b.y > y1) continue;
       if (b.kind === 'tree') { drawTree(ctx, b); continue; }
-      if (b.kind === 'police' || b.kind === 'hospital') {
+      if (b.kind === 'police' || b.kind === 'hospital' || b.kind === 'depot') {
         drawSpecial(ctx, b, b.kind);
         continue;
       }
@@ -487,6 +511,7 @@ CJ.World = (function () {
         else if (c === '#') col = '#6d7580';
         else if (c === 'P') col = '#3f6fc4';
         else if (c === 'H') col = '#e6eef3';
+        else if (c === 'C') col = '#b9933f';
         else col = '#22352a';
         mctx.fillStyle = col;
         mctx.fillRect(tx * px, ty * px, px, px);
@@ -517,6 +542,7 @@ CJ.World = (function () {
     get playerSpawn() { return playerSpawn; },
     get policeStation() { return policeStation; },
     get hospital() { return hospital; },
+    get depot() { return depot; },
     get hospitalSpawn() { return hospitalSpawn; },
     get policeSpawn() { return policeSpawn; },
     get tile() { return T; },

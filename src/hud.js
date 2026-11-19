@@ -135,11 +135,13 @@ CJ.HUD = (function () {
       view.h * sy
     );
 
-    // Cars: green for yours, blue for the police, yellow for parked ones.
+    // Cars: green for yours, blue for the police, amber for a street cleaner,
+    // yellow for parked ones.
     for (var i = 0; i < s.cars.length; i++) {
       var car = s.cars[i];
       ctx.fillStyle = car.police ? '#5b9bff'
-        : (car === s.player.driving ? '#7ee081' : '#e8c04a');
+        : (car.cleaner ? '#f0a93a'
+        : (car === s.player.driving ? '#7ee081' : '#e8c04a'));
       ctx.fillRect(ox + car.x * sx - 2, oy + car.y * sy - 2, 4, 4);
     }
 
@@ -161,10 +163,12 @@ CJ.HUD = (function () {
     }
 
     // Special buildings: blue ring for the police station, red cross for the
-    // hospital. Drawn on top so they are findable at a glance.
+    // hospital, amber ring for the cleaner depot. Drawn on top so they are
+    // findable at a glance.
     var specials = [
       { rect: world.policeStation, color: '#5b9bff' },
-      { rect: world.hospital, color: '#ff5a4a' }
+      { rect: world.hospital, color: '#ff5a4a' },
+      { rect: world.depot, color: '#f0a93a' }
     ];
     for (var k = 0; k < specials.length; k++) {
       var rect = specials[k].rect;

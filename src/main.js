@@ -49,6 +49,7 @@ window.CJ = window.CJ || {};
     CJ.HUD.hideWasted();
     CJ.HUD.hideBusted();
     CJ.Police.reset();
+    CJ.Cleaner.reset();
 
     cars = world.carSpawns.map(function (spawn, i) {
       return new CJ.Car({
@@ -74,6 +75,7 @@ window.CJ = window.CJ || {};
     CJ.Peds.init(world, CJ.MAP_CITY);
     CJ.Input.init(canvas);
     CJ.Police.init(world, bustPlayer);
+    CJ.Cleaner.init(world);
     CJ.HUD.init();
     CJ.HUD.onRespawn(respawnPlayer);
     CJ.HUD.onBustRespawn(respawnFromBust);
@@ -91,7 +93,7 @@ window.CJ = window.CJ || {};
     var best = null;
     var bestD = C.ENTER_RANGE;
     for (var i = 0; i < cars.length; i++) {
-      if (cars[i].police) continue;                // never hijack a squad car
+      if (cars[i].police || cars[i].cleaner) continue;  // never hijack a squad car or a sweeper
       var d = M.dist(player.x, player.y, cars[i].x, cars[i].y);
       if (d < bestD) { bestD = d; best = cars[i]; }
     }
@@ -514,6 +516,7 @@ window.CJ = window.CJ || {};
   function runOverPeds() {
     for (var i = 0; i < cars.length; i++) {
       var car = cars[i];
+      if (car.cleaner) continue;   // a sweeper gently nudges people, never flattens
       var flattened = CJ.Peds.hitByCar(car);
       if (!flattened) continue;
       // Only crimes committed from behind your own wheel raise the alert.
@@ -579,6 +582,10 @@ window.CJ = window.CJ || {};
 
     // The police chase, deploy and shoot before parked cars settle.
     CJ.Police.update(dt, player, cars);
+
+    // Decals age, and the street cleaners roll out to wash the old ones away.
+    CJ.Blood.update(dt);
+    CJ.Cleaner.update(dt, cars);
 
     // Parked cars keep settling (and coast after an exit). The squad car is on
     // autopilot, so leave its physics to the police module.
@@ -760,6 +767,7 @@ window.CJ = window.CJ || {};
           document.getElementById('hud-wasted').style.display === 'flex'),
         alert: CJ.Police.alert,
         police: CJ.Police.snapshot(),
+        cleaner: CJ.Cleaner.snapshot(),
         peds: CJ.Peds.list,
         pedsAlive: CJ.Peds.aliveCount,
         kills: CJ.Peds.kills,

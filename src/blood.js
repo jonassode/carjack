@@ -72,10 +72,38 @@ CJ.Blood = (function () {
       y: y,
       pool: rnd(11, 16),         // central pool radius
       blobs: blobs,
-      path: makePath(x, y, blobs)
+      path: makePath(x, y, blobs),
+      age: 0                     // seconds it has been on the ground
     });
 
     if (splats.length > CJ.CFG.SPLAT_MAX) splats.splice(0, splats.length - CJ.CFG.SPLAT_MAX);
+  }
+
+  // Age every decal. main calls this once per fixed step so the street cleaners
+  // can tell how long a splat has been lying there. Decals never fade on their
+  // own — only a cleaner (or the SPLAT_MAX cap) ever removes them.
+  function update(dt) {
+    for (var i = 0; i < splats.length; i++) splats[i].age += dt;
+  }
+
+  // Remove one decal. Returns true when it was actually on the ground.
+  function remove(splat) {
+    var i = splats.indexOf(splat);
+    if (i === -1) return false;
+    splats.splice(i, 1);
+    return true;
+  }
+
+  // A cleaner scrubs everything within `r` of (x,y). Returns how many it got.
+  function cleanNear(x, y, r) {
+    var r2 = r * r;
+    var got = 0;
+    for (var i = splats.length - 1; i >= 0; i--) {
+      var dx = splats[i].x - x;
+      var dy = splats[i].y - y;
+      if (dx * dx + dy * dy <= r2) { splats.splice(i, 1); got++; }
+    }
+    return got;
   }
 
   function draw(ctx) {
@@ -117,6 +145,9 @@ CJ.Blood = (function () {
 
   return {
     add: add,
+    update: update,
+    remove: remove,
+    cleanNear: cleanNear,
     draw: draw,
     clear: clear,
     get count() { return splats.length; },

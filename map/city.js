@@ -13,6 +13,7 @@
 //   'H'  hospital (solid, exactly one on the map)
 //   '|'  road centre line marker (non-solid)
 //   'o'  tree (solid, small)
+//   'C'  street-cleaner depot (solid, small — owns part of one block)
 //
 window.CJ = window.CJ || {};
 
@@ -34,6 +35,17 @@ window.CJ = window.CJ || {};
     if (blockX === SPECIAL.police.bx && blockY === SPECIAL.police.by) return 'P';
     if (blockX === SPECIAL.hospital.bx && blockY === SPECIAL.hospital.by) return 'H';
     return null;
+  }
+
+  // The street-cleaner depot: a small building that owns only *part* of block
+  // (1,1) rather than a whole block. `x0/y0` are block-local tile coordinates
+  // (the sidewalk ring lives at 0 and 5, so the interior runs 1..4).
+  var DEPOT = { bx: 1, by: 1, x0: 2, y0: 2, w: 3, h: 2 };
+
+  function isDepotTile(blockX, blockY, bx, by) {
+    if (blockX !== DEPOT.bx || blockY !== DEPOT.by) return false;
+    return bx >= DEPOT.x0 && bx < DEPOT.x0 + DEPOT.w &&
+           by >= DEPOT.y0 && by < DEPOT.y0 + DEPOT.h;
   }
 
   function isRoadLine(c) {
@@ -66,6 +78,9 @@ window.CJ = window.CJ || {};
         // The police station and the hospital each own a whole block interior.
         var special = specialAt(blockX, blockY);
         if (special) { row.push(special); continue; }
+
+        // The cleaner depot only covers a few tiles of one block.
+        if (isDepotTile(blockX, blockY, bx, by)) { row.push('C'); continue; }
 
         // Whole-block parks.
         var isPark = (blockX === 4 && blockY === 4) ||
@@ -125,11 +140,14 @@ window.CJ = window.CJ || {};
     blockSize: BLOCK,        // tiles per city block (used to lay out sidewalk routes)
     roadWidth: ROAD_W,
     legend: { ' ': 'grass', '=': 'road', '.': 'sidewalk', '#': 'building',
-             'P': 'police', 'H': 'hospital', '|': 'lane', 'o': 'tree' },
+             'P': 'police', 'H': 'hospital', 'C': 'depot', '|': 'lane', 'o': 'tree' },
     rows: buildRows(),
 
     // Where the two special buildings live, in block coordinates.
     special: SPECIAL,
+
+    // The cleaner depot: block coordinates plus the small footprint it occupies.
+    depot: DEPOT,
 
     // Player spawn (tile units, centre of tile). Sidewalk at a street corner,
     // with a car parked on the road straight below it.

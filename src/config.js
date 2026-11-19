@@ -79,6 +79,24 @@ CJ.CFG = {
   POLICE_BUST_TIME: 1.5,      // seconds of grabbing before you are busted
   POLICE_BUST_SPEED: 70,      // your car must be slower than this to be pulled out
 
+  // --- street cleaners (blood decals) -------------------------------------
+  // A small depot building ('C' on the map) keeps the streets tidy. A splat
+  // that sits for CLEAN_DELAY seconds with nobody washing it summons a cleaner
+  // truck: it drives out over the road grid, scrubs every decal within
+  // CLEANER_WASH_RADIUS, then heads home. That drains the decal pool long before
+  // it can ever fill up to SPLAT_MAX.
+  CLEAN_DELAY: 20,            // seconds a splat is left before a truck is sent
+  CLEANER_MAX_UNITS: 3,       // most trucks out at once
+  CLEANER_CAR_HP: 9999,       // a service truck; scrapes never write it off
+  CLEANER_SPEED_MULT: 0.80,   // slower than your car
+  CLEANER_ACCEL_MULT: 0.9,
+  CLEANER_REPATH: 0.9,        // seconds between road routes
+  CLEANER_REACH: 100,         // close enough to a mess to start washing
+  CLEANER_WASH_TIME: 1.8,     // seconds spent scrubbing
+  CLEANER_WASH_RADIUS: 120,   // splats wiped within this of the truck
+  CLEANER_DEPART_DELAY: 0.8,  // gap between trucks rolling out
+  CLEANER_GIVEUP: 30,         // seconds before a wedged truck heads home
+
   // --- explosions / health ------------------------------------------------
   EXPLOSION_RADIUS: 190,      // px blast radius around a car that blows up
   EXPLOSION_DMG_FRAC: 0.30,   // share of max health lost right at the blast centre
@@ -131,6 +149,9 @@ CJ.CFG = {
     hospital:   '#b9c4cc',
     hospitalRoof:'#dde6ec',
     cross:      '#c23b2b',
+    depot:      '#6b6440',
+    depotRoof:  '#8a8256',
+    depotDoor:  '#242830',
     explosion:  '#ffb347',
     player:     '#eef2f7',
     playerArm:  '#9aa3ae',
@@ -142,7 +163,12 @@ CJ.CFG = {
     sirenRed:   '#ff3b30',
     sirenBlue:  '#3b82ff',
     cop:        '#2b3f63',
-    copTrim:    '#9fb4d8'
+    copTrim:    '#9fb4d8',
+    cleanerBody:'#d8a63a',
+    cleanerTank:'#c6cfd8',
+    cleanerTrim:'#23282f',
+    cleanerBrush:'#9aa2ae',
+    water:      'rgba(170,215,245,0.45)'
   },
 
   CAR_COLORS: ['#b8402f', '#2f6fb8', '#c9a227', '#2f9e6b', '#8d4fc9', '#c96a2f'],
